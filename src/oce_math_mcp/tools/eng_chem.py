@@ -544,7 +544,7 @@ def _kinetics(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         return out
     order = integer(p, "order", 0)
     if order > 2:
-        raise ToolError("INVALID_ARGUMENT", "params.order: 0, 1 o 2.")
+        raise ToolError("INVALID_ARGUMENT", "params.order: 0, 1 or 2.")
     k, c0 = need(p, "k", None), _conc(p, "c0")
     half = {0: c0 / (2 * k), 1: math.log(2) / k, 2: 1 / (k * c0)}[order]
     if (p.get("t") is None) == (p.get("c") is None):

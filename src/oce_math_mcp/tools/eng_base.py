@@ -14,7 +14,7 @@ from typing import Any
 
 from ..constants import lookup
 from ..envelope import Ctx
-from ..errors import ToolError
+from ..errors import NOT_FINITE, ToolError
 from ..fmt import fmt_float
 from .math_eval import unit_factor
 
@@ -170,6 +170,24 @@ _EXAMPLE = (
 )
 
 
+def range_guard(fn: Op) -> Op:
+    """The D74 error for an operation whose divisions are all by positive physical sizes (D95).
+
+    There an OverflowError or a ZeroDivisionError can come only from the floating-point range (1e300 squared,
+    1e-300 squared): before, the answer was the bare Python text "ZeroDivisionError: float division by zero".
+    Singular points (a test point on a point mass) keep their own INVALID_ARGUMENT.
+    """
+
+    def wrapped(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
+        try:
+            return fn(p, ctx)
+        except (OverflowError, ZeroDivisionError):
+            raise ToolError("MATH_ERROR", NOT_FINITE) from None
+
+    wrapped.__doc__ = fn.__doc__
+    return wrapped
+
+
 def op(name: str, keys: Iterable[str]) -> Callable[[Op], Op]:
     def deco(fn: Op) -> Op:
         OPS[name] = (fn, frozenset(keys))
@@ -201,10 +219,7 @@ def handle(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     result = fn(p, ctx)
     # D74: an ok answer never carries "oo" or "nan"; an overflow of the inputs is an error
     if not _all_finite(result):
-        raise ToolError(
-            "MATH_ERROR",
-            "The result is not finite: the inputs are outside the floating-point range (overflow or underflow).",
-        )
+        raise ToolError("MATH_ERROR", NOT_FINITE)
     return {k: clean(v) for k, v in result.items()}
 
 

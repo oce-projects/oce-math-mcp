@@ -171,21 +171,58 @@ def mat_str(m: Any) -> list[list[str]]:
     return [[str(m[i, j]) for j in range(m.shape[1])] for i in range(m.shape[0])]
 
 
+_UNDEFINED = (sp.zoo, sp.nan, sp.oo, -sp.oo)
+
+
+def check_bound_order(lims: list[tuple[Any, Any, Any]]) -> None:
+    """The first entry of bounds is the innermost integral: a bound may use only the outer variables (D91).
+
+    With the order reversed, quad evaluated the bound at 0 and gave 0.0, multi_integrate left the variable in the
+    result ("x" for the triangle 0 <= y <= x <= 1); both said nothing.
+    """
+    names = [v for v, _, _ in lims]
+    for i, (v, a, b) in enumerate(lims):
+        used = getattr(a, "free_symbols", set()) | getattr(b, "free_symbols", set())
+        bad = used & set(names[: i + 1])
+        if bad:
+            raise ToolError(
+                "INVALID_ARGUMENT",
+                f"The bounds of {v} use {', '.join(sorted(map(str, bad)))}, integrated inside it: "
+                "the first entry of bounds is the innermost integral.",
+                '[["y", 0, "x"], ["x", 0, 1]]',
+            )
+
+
 def is_zero(expr: Any) -> bool:
-    """Symbolic zero, with numeric fallback on fixed points."""
+    """Symbolic zero, with numeric fallback on fixed points.
+
+    D90: an exact nonzero number is not zero (it was, below 1e-10), an undefined value (zoo, nan, oo) is not zero
+    (nan passed every comparison), and the numeric fallback is relative to the size of the terms: 1e-20 at 30
+    digits for exact expressions, 1e-10 when the expression carries floats.
+    """
     try:
-        if sp.simplify(expr) == 0:
+        s = sp.simplify(expr)
+        if s == 0:
             return True
-    except (TypeError, ValueError, NotImplementedError, RecursionError):
+        if s.has(*_UNDEFINED) or s.is_Rational:
+            return False
+    except (TypeError, ValueError, NotImplementedError, RecursionError, AttributeError):
         pass
     free = sorted(getattr(expr, "free_symbols", set()), key=lambda s: s.name)
     points = [sp.Rational(3, 7), sp.Rational(11, 13), sp.Rational(-5, 9), sp.Rational(17, 5)]
+    rel = 1e-10 if expr.atoms(sp.Float) else 1e-20
     try:
         for k in range(3):
             subs = {s: points[(i + k) % len(points)] for i, s in enumerate(free)}
-            v = complex(sp.N(expr.subs(subs), 30))
-            if abs(v) > 1e-10:
+            e = expr.subs(subs)
+            if e.is_Rational:  # exact arithmetic: x / 10**25 at x = 3/7 is not zero
+                if e != 0:
+                    return False
+                continue
+            v = abs(complex(sp.N(e, 30)))
+            scale = max([1.0] + [abs(complex(sp.N(t, 30))) for t in sp.Add.make_args(e)])
+            if not v <= rel * scale:  # also False for nan
                 return False
         return True
-    except (TypeError, ValueError, ZeroDivisionError):
+    except (TypeError, ValueError, ZeroDivisionError, AttributeError):
         return False

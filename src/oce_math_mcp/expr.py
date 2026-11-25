@@ -171,7 +171,16 @@ class _Builder:
                 fr = Fraction(repr(v))
             return sp.Rational(fr.numerator, fr.denominator)
         if isinstance(v, complex):
-            return sp.Rational(Fraction(repr(v.imag))) * sp.I
+            # only exponent forms get here (1e5j): 2j and 0.5j are refused before as implicit products.
+            # D96: exact from the source text like a float; Fraction(repr(v.imag)) failed on 1e400j (inf)
+            seg = (ast.get_source_segment(self.src, node) or repr(v.imag)).rstrip("jJ")
+            exp = _FLOAT_EXP.search(seg)
+            if exp and abs(int(exp.group(1))) > limits.EXPONENT_MAX:
+                raise ToolError(
+                    "LIMIT_EXCEEDED", f"Decimal exponent beyond {limits.EXPONENT_MAX}.", "1e300*I"
+                )
+            fr = Fraction(seg.replace("_", ""))
+            return sp.Rational(fr.numerator, fr.denominator) * sp.I
         raise ToolError("FORBIDDEN", f"Constant not allowed: {v!r}.", "1")
 
     def _Name(self, node: ast.Name, in_call: str | None) -> Any:
@@ -224,7 +233,7 @@ class _Builder:
             return sp.floor(a / b)
         if isinstance(op, ast.Mod):
             if b == 0:
-                raise ToolError("MATH_ERROR", "Modulo per zero.")
+                raise ToolError("MATH_ERROR", "Modulo by zero.")
             return sp.Mod(a, b)
         if isinstance(op, ast.Pow | ast.BitXor):
             return safe_pow(a, b)
@@ -362,10 +371,7 @@ def parse_relation(text: Any, grammar: Grammar) -> Any:
     g = Grammar(
         grammar.functions, grammar.declared, grammar.free_symbols, grammar.string_args, True
     )
-    out = parse(src, g)
-    if isinstance(out, sp.Eq):
-        return out
-    return out
+    return parse(src, g)
 
 
 def split_list(text: Any) -> list[str]:

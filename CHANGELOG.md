@@ -38,6 +38,40 @@ pages), one group at a time.
   again on the code of 0.4.0 in progress: 1,045 passed, 7 skipped in 58.30 s, self-check
   7.83 s; `RLIMIT_AS` read from `/proc/<pid>/limits` of a worker (1,073,741,824 bytes for memory_mb = 1024). Mutation check: 7 changed
   lines out of 7 caught.
+- Audit of the repository (D90-D97, spec 4.13.0): mechanical checks (every operation of the contract answers,
+  the keys of `eng_calc` are all in the spec, no broken link), a robustness exploration of D87-D88 and a
+  one-pass review by 10 agents (5 scanners by area, 5 verifiers that reproduced each finding); 23 defects
+  confirmed and reproduced, all fixed with tests and a mutation check, together with the defects found
+  while fixing them (in D90, D91, D93, D96 and D97).
+  - `verified` (D90): `diff` gave false for every derivative (the numerical reference went through
+    `complex()` inside `mpmath.diff`); now a 40-digit reference, also for `partial_diff`, which compared the
+    derivative with itself. `is_zero` took 1e-11 and an undefined `zoo` as zero (`check_solution` accepted
+    x = 0 for 1/x = 1); now exact numbers are compared exactly and the numeric fallback is relative.
+    Systems of ODEs and `polynomial` nroots, discriminant, resultant, vieta, coeffs and degree said true
+    without a check; now each one has an independent check. No solution found means not verified.
+  - Counts and bounds (D91): `poisson_pmf`, `binom_pmf` and their CDFs, `gcd`, `lcm`, `mod_inv` and
+    `round` refuse non-integer counts (2.5 gave a gamma-based probability, 12.5 was truncated to 12);
+    `quad` and `multi_integrate` refuse bounds in the wrong order (they gave 0.0 and "x" for a triangle);
+    `multi_integrate` checks its result with a real numerical integral (before, `evalf` left an `Integral`
+    and `verified` was false for every multiple integral).
+  - `eng_calc` (D92): `control_system` second_order exact rise and settling times for any damping
+    (zeta = 1e-5 gave tr_10_90 = 7.30 s instead of 1.0196 s); the beta thermistor never answers below 0 K;
+    `bolt_joint` takes the magnitude of the shear and refuses a negative tension; `gear_spur` needs a
+    pressure angle between 0 and 45 degrees; `belt_drive` refuses `m_l` without `P`; `psychrometrics`
+    refuses `RH2` (dehumidifying coil) when heating.
+  - `geom3d_calc` (D93): counts must be integers and are checked before any list is built; a flat mesh has
+    `centroid` and `inertia` null with a warning (they were nan); a parametric curve with non-finite points
+    or a divergent length is an error, and any other curve whose points or length leave the floating-point
+    range is the D74 MATH_ERROR (an involute with base radius 1e306 gave ok = true with length "oo"); two
+    messages of `pattern` were still in Italian.
+  - `python_sandbox` (D94): numpy integers count for the sequence cap; the shift cap is on the result.
+  - `kinetic_theory` and `gravitation` (D95): extreme inputs give the error of D74 instead of the bare
+    Python text (119 cases in 11 groups before, 0 after).
+  - Parser and pool (D96): exponent-form imaginary literals such as `1e400j` are exact (they failed on
+    `Fraction(repr(inf))`); a redundant branch removed; the pool refuses a size below 1.
+  - Messages (D97): twelve texts were still in Italian ("Modulo per zero.", "polyroots non converge.",
+    "box o cylinder"...). The language test of D81 read only STRING tokens, and on Python 3.12 and later the
+    text of an f-string is an FSTRING_MIDDLE token; now it reads both and looks for more Italian words.
 - Linux tested (Ubuntu 22.04, x86_64, Python 3.12.13, uv 0.11.20): `--self-check` ok in 8.65 s; suite
   1,026 passed and 7 skipped in 44.91 s. macOS is not tested.
 

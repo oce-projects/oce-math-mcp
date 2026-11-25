@@ -17,7 +17,7 @@ from ..envelope import Ctx
 from ..errors import ToolError
 from ..expr import parse, parse_relation, split_list
 from ..numfunc import compile_expr, compile_mp, to_mp
-from .common import auto_vars, expr_of, grammar, rel_parts, symbols_for, value_of
+from .common import auto_vars, check_bound_order, expr_of, grammar, rel_parts, symbols_for, value_of
 
 Op = Callable[[dict[str, Any], Ctx], dict[str, Any]]
 OPS: dict[str, Op] = {}
@@ -130,6 +130,7 @@ def _quad(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
             f"Variables without bounds: {sorted(map(str, extra))}.",
             '[["x", 0, 1], ["y", 0, "x"]]',
         )
+    check_bound_order(lims)  # D91
     fn = compile_mp(f, syms, dps)
     bound_fns = [
         (
@@ -627,7 +628,7 @@ def _ode_events(
         if direction not in _EVENT_DIRECTIONS:
             raise ToolError(
                 "INVALID_ARGUMENT",
-                f"events[{i}].direction: usa both, rising o falling.",
+                f"events[{i}].direction: use both, rising or falling.",
                 _EVENT_EXAMPLE,
             )
         terminal = ev.get("terminal", True)
@@ -681,7 +682,7 @@ def _polyroots(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         except NoConvergence:
             continue
     if roots is None:
-        raise ToolError("MATH_ERROR", "polyroots non converge.")
+        raise ToolError("MATH_ERROR", "polyroots does not converge.")
     out = []
     for r in roots:
         if isinstance(r, mpmath.mpc) and abs(r.imag) < mpmath.mpf(10) ** (-d - 2):

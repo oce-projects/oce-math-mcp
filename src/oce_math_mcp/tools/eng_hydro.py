@@ -333,7 +333,7 @@ def _channel_geometry(
     allowed = {"rectangular": {"b"}, "trapezoidal": {"b", "z"}, "circular": {"D"}}[shape]
     wrong = sorted({"b", "z", "D"} - allowed & set(p))
     if wrong:
-        raise ToolError("INVALID_ARGUMENT", f"shape '{shape}' non usa: {', '.join(wrong)}.")
+        raise ToolError("INVALID_ARGUMENT", f"shape '{shape}' does not use: {', '.join(wrong)}.")
     if shape == "circular":
         D = need(p, "D", "length")
 

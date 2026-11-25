@@ -16,7 +16,7 @@ import numpy as np
 
 from .. import limits
 from ..envelope import Ctx
-from ..errors import ToolError
+from ..errors import NOT_FINITE, ToolError
 
 Op = Callable[[dict[str, Any], Ctx], dict[str, Any]]
 OPS: dict[str, Op] = {}
@@ -103,6 +103,23 @@ def num(p: dict[str, Any], key: str, default: float | None = None, positive: boo
     if positive and f <= 0:
         raise ToolError("INVALID_ARGUMENT", f"params.{key} must be > 0.")
     return f
+
+
+def count(v: Any, name: str, lo: int = 1, hi: int = limits.LIST_MAX) -> int:
+    """An integer count in [lo, hi], checked before any list is built (D93).
+
+    Before, int() truncated 5.9 holes to 5 and a pattern of 1e8 points was built before the size check.
+    """
+    if v is None:
+        raise ToolError("INVALID_ARGUMENT", f"Missing {name}.")
+    if isinstance(v, bool) or not isinstance(v, int | float) or not float(v).is_integer():
+        raise ToolError("INVALID_ARGUMENT", f"{name} must be an integer, not {v}.")
+    n = int(v)
+    if n < lo:
+        raise ToolError("INVALID_ARGUMENT", f"{name} must be >= {lo}.")
+    if n > hi:
+        raise ToolError("LIMIT_EXCEEDED", f"{name}: at most {hi}.")
+    return n
 
 
 def points(raw: Any, name: str, dim: int | None = None, min_count: int = 1) -> np.ndarray:
@@ -248,7 +265,7 @@ def _transform(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         for i, m in enumerate(p["matrices"]):
             M = np.array(m, dtype=float)
             if M.shape != (4, 4):
-                raise ToolError("INVALID_ARGUMENT", f"params.matrices[{i}] non è 4x4.")
+                raise ToolError("INVALID_ARGUMENT", f"params.matrices[{i}] is not 4x4.")
             T = T @ M
     else:
         angles = vec(args["angles_deg"], "angles_deg") if args.get("angles_deg") else np.zeros(3)
@@ -406,9 +423,7 @@ def _coord(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
 @op("pcd_holes")
 def _pcd(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     p = P(args)
-    n = int(num(p, "n"))
-    if n > limits.LIST_MAX:
-        raise ToolError("LIMIT_EXCEEDED", f"At most {limits.LIST_MAX} holes.")
+    n = count(p.get("n"), "params.n")
     r = num(p, "pcd_diameter") / 2
     start = num(p, "start_angle_deg", 0.0, positive=False)
     c = vec(p.get("center", [0, 0]), "params.center", 2)
@@ -494,7 +509,7 @@ def _solid(p: dict[str, Any]) -> dict[str, Any]:
         }
     if shape == "flange":
         D, d, t = num(p, "D"), num(p, "d"), num(p, "thickness")
-        n = int(p.get("n_holes", 0) or 0)
+        n = count(p.get("n_holes", 0), "params.n_holes", 0)
         hd = num(p, "hole_d") if n else 0.0
         pcd = num(p, "pcd") if n else 0.0
         R, r, rh, rho = D / 2, d / 2, hd / 2, pcd / 2
@@ -537,7 +552,7 @@ def _mass_scale(p: dict[str, Any], ctx: Ctx) -> tuple[float | None, float]:
     rho = num(p, "density")
     lu = str(p.get("length_unit", "m"))
     if lu not in _UNIT:
-        raise ToolError("INVALID_ARGUMENT", "params.length_unit: m, cm o mm.", '"mm"')
+        raise ToolError("INVALID_ARGUMENT", "params.length_unit: m, cm or mm.", '"mm"')
     if "length_unit" not in p:
         ctx.warn(
             "Mass with lengths in metres and density in kg/m³: for millimetres use params.length_unit = 'mm'."
@@ -844,9 +859,7 @@ def _triangle(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
 def _curve(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     p = P(args)
     kind = p.get("curve")
-    n = int(p.get("n", 50))
-    if not 2 <= n <= limits.LIST_MAX:
-        raise ToolError("INVALID_ARGUMENT", f"params.n between 2 and {limits.LIST_MAX}.")
+    n = count(p.get("n", 50), "params.n", 2)
     c = (
         vec(p.get("center", [0, 0, 0]), "params.center")
         if kind in {"arc", "circle", "ellipse", "helix"}
@@ -928,24 +941,43 @@ def _curve(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         ds = [compile_expr(sp.diff(e, tt), [tt]) for e in comps]
         t = np.linspace(t0, t1, n)
         pts = np.array([[f(float(v)) for f in fs] for v in t])
-        length = float(
-            quad(
-                lambda s: math.sqrt(sum(df(s) ** 2 for df in ds)),
-                t0,
-                t1,
-                epsabs=1e-12,
-                epsrel=1e-12,
-                limit=200,
-            )[0]
-        )
+        if not np.all(np.isfinite(pts)):  # D93: before, ok with nan points and a negative length
+            raise ToolError(
+                "INVALID_ARGUMENT",
+                "The curve is not defined at some points of t_range (e.g. 1/t at t = 0).",
+            )
+        import warnings
+
+        from scipy.integrate import IntegrationWarning
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", IntegrationWarning)
+            try:
+                length = abs(
+                    float(
+                        quad(
+                            lambda s: math.sqrt(sum(df(s) ** 2 for df in ds)),
+                            t0,
+                            t1,
+                            epsabs=1e-12,
+                            epsrel=1e-12,
+                            limit=200,
+                        )[0]
+                    )
+                )
+            except IntegrationWarning:
+                raise ToolError(
+                    "MATH_ERROR", "The length integral does not converge on t_range."
+                ) from None
     else:
         raise ToolError(
             "INVALID_ARGUMENT",
             "params.curve: helix, involute, spline, parametric, arc, circle, ellipse.",
             '{"curve": "helix", "radius": 10, "pitch": 2, "turns": 3, "n": 100}',
         )
-    if not np.all(np.isfinite(pts)):
-        ctx.warn("Some points are not finite (outside the domain).")
+    # D93: the other curves have no domain, so a non-finite point or length is the float range (D74, D95)
+    if not (np.all(np.isfinite(pts)) and math.isfinite(length)):
+        raise ToolError("MATH_ERROR", NOT_FINITE)
     ctx.formatted = f"{n} points, length {length:.6g}"
     return {"points": pts.tolist(), "length": length}
 
@@ -1220,7 +1252,7 @@ def _features(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     else:
         raise ToolError(
             "INVALID_ARGUMENT",
-            "params.shape: box o cylinder.",
+            "params.shape: box or cylinder.",
             '{"shape": "box", "size": [10, 20, 30]}',
         )
     ctx.formatted = f"{len(out['vertices'])} vertices, {len(out['face_centers'])} faces"
@@ -1234,7 +1266,7 @@ def _pattern(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     origin = vec(p.get("origin", [0, 0, 0]), "params.origin")
     pts: list[list[float]] = []
     if kind == "linear":
-        n = int(num(p, "count"))
+        n = count(p.get("count"), "params.count")
         d = unit(vec(p.get("axis", [1, 0, 0]), "params.axis"), "params.axis")
         s = num(p, "spacing", positive=False)
         pts = [(origin + k * s * d).tolist() for k in range(n)]
@@ -1246,17 +1278,19 @@ def _pattern(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         ):
             raise ToolError(
                 "INVALID_ARGUMENT",
-                "grid: count [nx, ny] e spacing [dx, dy].",
+                "grid: count [nx, ny] and spacing [dx, dy].",
                 '{"kind": "grid", "count": [3, 2], "spacing": [10, 20]}',
             )
-        nx, ny = int(cnt[0]), int(cnt[1])
+        nx, ny = count(cnt[0], "params.count[0]"), count(cnt[1], "params.count[1]")
+        if nx * ny > limits.LIST_MAX:
+            raise ToolError("LIMIT_EXCEEDED", f"At most {limits.LIST_MAX} points.")
         pts = [
             (origin + np.array([i * float(sp_[0]), j * float(sp_[1]), 0.0])).tolist()
             for j in range(ny)
             for i in range(nx)
         ]
     elif kind == "circular":
-        n = int(num(p, "count"))
+        n = count(p.get("count"), "params.count")
         r = num(p, "radius")
         total = num(p, "angle_deg", 360.0)
         start = num(p, "start_angle_deg", 0.0, positive=False)
@@ -1271,7 +1305,7 @@ def _pattern(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     else:
         raise ToolError(
             "INVALID_ARGUMENT",
-            "params.kind: linear, grid o circular.",
+            "params.kind: linear, grid or circular.",
             '{"kind": "circular", "count": 6, "radius": 10}',
         )
     if len(pts) > limits.LIST_MAX:
@@ -1349,15 +1383,18 @@ def _mesh(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         )
     Cc = Cov - vol * np.outer(cen, cen)
     inertia = np.trace(Cc) * np.eye(3) - Cc
+    flat = abs(vol) <= EPS
+    if flat:  # D93: before, centroid and inertia were nan inside ok (D74)
+        ctx.warn("Volume zero (flat or open mesh): centroid and inertia are not defined.")
     ctx.formatted = f"Volume {vol:.6g}, area {area:.6g}"
     return {
         "volume": vol,
         "area": area,
-        "centroid": cen.tolist(),
+        "centroid": None if flat else cen.tolist(),
         "bbox_min": V.min(axis=0).tolist(),
         "bbox_max": V.max(axis=0).tolist(),
         "watertight": watertight,
-        "inertia": inertia.tolist(),
+        "inertia": None if flat else inertia.tolist(),
         "inertia_units": "∫r² dV about the centroid (density 1)",
     }
 
@@ -1383,7 +1420,7 @@ def _composite(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         pos = vec(part.get("position", [0, 0, 0]), f"parts[{i}].position")
         sign = {"add": 1.0, "subtract": -1.0}.get(part.get("op", "add"))
         if sign is None:
-            raise ToolError("INVALID_ARGUMENT", f"parts[{i}].op: add o subtract.")
+            raise ToolError("INVALID_ARGUMENT", f"parts[{i}].op: add or subtract.")
         vol += sign * s["volume"]
         moment += sign * s["volume"] * (np.array(s["centroid"]) + pos)
         box = (np.array(s["bbox"][0]) + pos, np.array(s["bbox"][1]) + pos)

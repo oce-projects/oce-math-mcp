@@ -187,9 +187,17 @@ def _real(x: Any) -> Any:
     return v
 
 
+def _whole(v: Any, what: str, example: str) -> int:
+    """An integer argument: 3.0 is accepted, 12.5 is INVALID_ARGUMENT (D91: int() truncated it in silence)."""
+    w = _real(v)
+    if not (w.is_integer or (w.is_Float and float(w).is_integer())):  # Float(12.0) != Integer(12)
+        raise ToolError("INVALID_ARGUMENT", f"{what} must be an integer, not {w}.", example)
+    return int(w)
+
+
 def _round(x: Any, n: Any = 0) -> Any:
     v = _real(x)
-    nd = int(n)
+    nd = _whole(n, "round: the number of decimals", "round(2.675, 2)")
     d, _ = to_decimal(v, max(nd, 0) + 25)
     q = d.quantize(Decimal(1).scaleb(-nd), ROUND_HALF_UP)
     fr = Fraction(q)
@@ -287,20 +295,48 @@ def _scipy_dist(name: str, fn: str) -> Any:
     return f
 
 
+def _rate(lam: Any) -> Any:
+    v = _real(lam)
+    if v.is_negative:
+        raise ToolError(
+            "INVALID_ARGUMENT", f"The Poisson mean must be >= 0, not {v}.", "poisson_pmf(3, 2.5)"
+        )
+    return v
+
+
 def _poisson_pmf(k: Any, lam: Any) -> Any:
-    return lam**k * sp.exp(-lam) / sp.factorial(k)
+    # D91: k is a count (2.5 gave gamma(3.5) in the denominator); below 0 the probability is 0
+    kk, lv = _whole(k, "poisson_pmf: k", "poisson_pmf(3, 2.5)"), _rate(lam)
+    return lv**kk * sp.exp(-lv) / sp.factorial(kk) if kk >= 0 else sp.Integer(0)
 
 
 def _poisson_cdf(k: Any, lam: Any) -> Any:
-    return sp.Add(*[_poisson_pmf(i, lam) for i in range(int(k) + 1)])
+    # P(X <= k) for a real k: the sum up to floor(k); 0 below 0 (int(-0.5) gave P(X = 0))
+    top, lv = int(sp.floor(_real(k))), _rate(lam)
+    return sp.Add(*[lv**i * sp.exp(-lv) / sp.factorial(i) for i in range(top + 1)])  # empty sum = 0
+
+
+def _binom_args(n: Any, p: Any, fn: str) -> tuple[int, Any]:
+    nn = _whole(n, f"{fn}: n", f"{fn}(2, 10, 0.3)")
+    pv = _real(p)
+    if nn < 0 or pv.is_negative or (pv - 1).is_positive:
+        raise ToolError(
+            "INVALID_ARGUMENT", f"{fn}: n >= 0 and 0 <= p <= 1 are needed.", f"{fn}(2, 10, 0.3)"
+        )
+    return nn, pv
 
 
 def _binom_pmf(k: Any, n: Any, p: Any) -> Any:
-    return sp.binomial(n, k) * p**k * (1 - p) ** (n - k)
+    # D91: k and n are counts (1.5 gave a gamma-based binomial); outside 0..n the probability is 0
+    kk = _whole(k, "binom_pmf: k", "binom_pmf(2, 10, 0.3)")
+    nn, pv = _binom_args(n, p, "binom_pmf")
+    return sp.binomial(nn, kk) * pv**kk * (1 - pv) ** (nn - kk) if 0 <= kk <= nn else sp.Integer(0)
 
 
 def _binom_cdf(k: Any, n: Any, p: Any) -> Any:
-    return sp.Add(*[_binom_pmf(i, n, p) for i in range(int(k) + 1)])
+    nn, pv = _binom_args(n, p, "binom_cdf")
+    top = min(int(sp.floor(_real(k))), nn)
+    return sp.Add(*[sp.binomial(nn, i) * pv**i * (1 - pv) ** (nn - i) for i in range(top + 1)])
 
 
 def _pmt(rate: Any, nper: Any, pv: Any, fv: Any = 0) -> Any:
@@ -356,19 +392,27 @@ def _tand(x: Any) -> Any:
 
 def _mod_inv(a: Any, m: Any) -> Any:
     try:
-        return sp.Integer(pow(int(a), -1, int(m)))
+        return sp.Integer(
+            pow(
+                _whole(a, "mod_inv: a", "mod_inv(3, 7)"),
+                -1,
+                _whole(m, "mod_inv: m", "mod_inv(3, 7)"),
+            )
+        )
     except ValueError:
         raise ToolError("MATH_ERROR", f"{a} is not invertible modulo {m}.") from None
 
 
 def _gcd(*a: Any) -> Any:
     d = _seq(a)
-    return sp.Integer(sp.igcd(*[int(v) for v in d])) if len(d) > 1 else d[0]
+    w = [_whole(v, "gcd", "gcd(12, 18)") for v in d]  # D91: int() truncated 12.5
+    return sp.Integer(sp.igcd(*w)) if len(w) > 1 else sp.Integer(w[0])
 
 
 def _lcm(*a: Any) -> Any:
     d = _seq(a)
-    return sp.Integer(sp.ilcm(*[int(v) for v in d])) if len(d) > 1 else d[0]
+    w = [_whole(v, "lcm", "lcm(4, 6)") for v in d]
+    return sp.Integer(sp.ilcm(*w)) if len(w) > 1 else sp.Integer(w[0])
 
 
 FUNCS: dict[str, Any] = {
@@ -505,7 +549,7 @@ def _steps(ctx: Ctx, src: str, value: Any, variables: dict[str, Any]) -> None:
             same = Fraction(int(value.p), int(value.q)) == indep
             ctx.step(
                 f"Back-check: independent recomputation with fractions = {indep} "
-                f"({'coincide' if same else 'NON coincide'}).",
+                f"({'matches' if same else 'does not match'}).",
                 indep,
             )
             return

@@ -363,14 +363,27 @@ def _second_order(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         )
     wn = need(p, "wn", "angular_velocity")
     y = _step_fn(z, wn)
-    slow = z * wn if z < 1 else wn / (z + math.sqrt(z * z - 1))  # slow pole, stable form (D75)
-    t = np.linspace(0, 40 / slow, 200001)
-    yy = y(t)
-    bad = np.nonzero(np.abs(yy - 1) > 0.02)[0]
-    i = int(bad[-1])
-    ts = _brentq(lambda s: abs(float(y(s)) - 1) - 0.02, float(t[i]), float(t[i + 1]))
-    t10 = _brentq(lambda s: float(y(s)) - 0.1, 0.0, float(t[int(np.argmax(yy >= 0.1))]))
-    t90 = _brentq(lambda s: float(y(s)) - 0.9, 0.0, float(t[int(np.argmax(yy >= 0.9))]))
+    if z < 1:
+        # D92: a grid over 40 / (zeta wn) missed the oscillations for zeta < 1e-4 (zeta = 1e-5: tr 7.30 s
+        # instead of 1.0196 s). The extrema of y are at t_k = k pi / wd with |y - 1| = Mp^k: the rise is in
+        # [0, t_1], where y grows; ts is in [t_k, t_(k+1)] for the last k with Mp^k > 0.02
+        half = math.pi / (wn * math.sqrt(1 - z * z))
+        t10 = _brentq(lambda s: float(y(s)) - 0.1, 0.0, half)
+        t90 = _brentq(lambda s: float(y(s)) - 0.9, 0.0, half)
+        ln_mp, ln_band = -math.pi * z / math.sqrt((1 - z) * (1 + z)), math.log(0.02)
+        k = math.floor(ln_band / ln_mp)  # Mp^k >= 0.02 > Mp^(k+1); at equality brentq returns t_k
+        ts = _brentq(lambda s: abs(float(y(s)) - 1) - 0.02, k * half, (k + 1) * half)
+    else:
+        slow = wn / (
+            z + math.sqrt(z * z - 1)
+        )  # slow pole, stable form (D75); y grows without overshoot
+        t = np.linspace(0, 40 / slow, 200001)
+        yy = y(t)
+        bad = np.nonzero(np.abs(yy - 1) > 0.02)[0]
+        i = int(bad[-1])
+        ts = _brentq(lambda s: abs(float(y(s)) - 1) - 0.02, float(t[i]), float(t[i + 1]))
+        t10 = _brentq(lambda s: float(y(s)) - 0.1, 0.0, float(t[int(np.argmax(yy >= 0.1))]))
+        t90 = _brentq(lambda s: float(y(s)) - 0.9, 0.0, float(t[int(np.argmax(yy >= 0.9))]))
     # sqrt(1 - zeta^2) as sqrt((1 - zeta)(1 + zeta)): no cancellation close to 1 (D78)
     out: dict[str, Any] = {
         "wd": wn * math.sqrt((1 - z) * (1 + z)) if z < 1 else None,

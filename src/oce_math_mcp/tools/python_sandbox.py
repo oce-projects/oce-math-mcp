@@ -479,6 +479,13 @@ def _int_like(v: Any) -> int | None:
             return int(v)
     except ImportError:  # pragma: no cover
         pass
+    try:  # D94: numpy integers too ([0] * np.int64(20000000) passed the 10,000,000 cap)
+        import numpy as np
+
+        if isinstance(v, np.integer):
+            return int(v)
+    except ImportError:  # pragma: no cover
+        pass
     return None
 
 
@@ -513,9 +520,12 @@ def guarded_mul(a: Any, b: Any) -> Any:
 
 
 def guarded_lshift(a: Any, b: Any) -> Any:
-    ib = _int_like(b)
+    ia, ib = _int_like(a), _int_like(b)
     if ib is not None and ib > limits.INT_BITS_MAX:
         raise _limit("Bit shift beyond 4,000,000.")
+    # D94: the size of the result, not only of the shift ((1 << 3999999) << 3999999 gave 7,999,999 bits)
+    if ia is not None and ib is not None and ib > 0 and ia.bit_length() + ib > limits.INT_BITS_MAX:
+        raise _limit("Integer result too large (beyond 4,000,000 bits).")
     return a << b
 
 

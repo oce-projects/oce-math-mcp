@@ -6,6 +6,7 @@ import itertools
 import math
 import re
 from collections.abc import Callable
+from fractions import Fraction
 from typing import Any, cast
 
 import numpy as np
@@ -19,6 +20,7 @@ from ..numfunc import compile_expr
 from .common import (
     SOLVE_FUNCS,
     auto_vars,
+    check_bound_order,
     expr_of,
     grammar,
     is_zero,
@@ -107,7 +109,8 @@ def _solve(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
             ctx.warn("Infinite or non-elementary solution set: see solution_set.")
             ctx.formatted = f"Solutions: {sol_set}"
             return {"solutions": [], "solution_set": str(sol_set), "count": None, "verified": False}
-    verified = all(is_zero(f.subs(x, s)) for s in sols)
+    # D90: nothing checked = not verified
+    verified = bool(sols) and all(is_zero(f.subs(x, s)) for s in sols)
     if ctx.show_steps:
         _solve_steps(ctx, f, x, sols, verified)
     ctx.formatted = (
@@ -158,7 +161,7 @@ def _solve_system(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     sols = sp.solve(eqs, xs, dict=True)
     if args.get("domain", "real") == "real":
         sols = [s for s in sols if all(v.is_real is not False for v in s.values())]
-    verified = all(is_zero(e.subs(s)) for s in sols for e in eqs)
+    verified = bool(sols) and all(is_zero(e.subs(s)) for s in sols for e in eqs)  # D90
     out = [{str(k): str(s[k]) for k in xs if k in s} for s in sols]
     ctx.formatted = (
         "; ".join(", ".join(f"{k} = {v}" for k, v in s.items()) for s in out) or "No solution."
@@ -234,7 +237,7 @@ def _diff_op(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         raise ToolError("INVALID_ARGUMENT", "order must be between 1 and 50.", "2")
     d = sp.diff(f, x, n)
     ds = sp.simplify(d) if sp.count_ops(d) < 200 else d
-    verified = _check_derivative_numeric(f, ds, x, n)
+    verified = _check_derivative_numeric(f, ds, [(x, n)])
     if ctx.show_steps:
         ctx.step(f"Function: f({x}) = {f}.", f)
         ctx.step(f"Rule: {_rule_name(f, x)}.")
@@ -253,32 +256,47 @@ def _diff_op(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     return {"derivative": str(ds), "verified": verified}
 
 
-def _check_derivative_numeric(f: Any, d: Any, x: Any, n: int) -> bool:
+def _mp_value(e: Any, at: dict[Any, Any]) -> Any:
+    """Value of e at the mpmath points `at`, at the working precision of mpmath (D90).
+
+    mpmath.diff raises its precision with the order; the value must keep it: going through complex() (as before
+    D90) left 16 digits and the finite differences gave 0.
+    """
     import mpmath
 
-    others = sorted(f.free_symbols - {x}, key=lambda s: s.name)
+    dps = mpmath.mp.dps + 10
+    pts = {s: sp.Float(mpmath.nstr(v, dps), dps) for s, v in at.items()}
+    re_, im_ = sp.N(e.subs(pts), dps).as_real_imag()
+    return mpmath.mpc(mpmath.mpf(str(sp.N(re_, dps))), mpmath.mpf(str(sp.N(im_, dps))))
+
+
+def _check_derivative_numeric(f: Any, d: Any, orders: list[tuple[Any, int]]) -> bool:
+    """d against the numerical derivative of f (mpmath.diff) at 3 points; orders = [(variable, order), ...]."""
+    import mpmath
+
+    xs = [v for v, _ in orders]
+    others = sorted(f.free_symbols - set(xs), key=lambda s: s.name)
     subs = {s: sp.Rational(7 + i, 5) for i, s in enumerate(others)}
     f0, d0 = f.subs(subs), d.subs(subs)
-    mpmath.mp.dps = 40
     good = 0
-    for pn, pd in ((3, 7), (6, 5), (-4, 9)):
-        pt = sp.Rational(pn, pd)
-        try:
-            exact = complex(sp.N(d0.subs(x, pt), 30))
-            num = complex(
-                mpmath.diff(
-                    lambda v: mpmath.mpc(complex(sp.N(f0.subs(x, v), 40))),
-                    mpmath.mpf(pn) / pd,
-                    n,
+    with mpmath.workdps(40):
+        for pn, pd in ((3, 7), (6, 5), (-4, 9)):
+            pts = [Fraction(pn, pd) + Fraction(j, 11) for j in range(len(xs))]
+            at = tuple(mpmath.mpf(p.numerator) / p.denominator for p in pts)
+            try:
+                exact = _mp_value(d0, dict(zip(xs, at, strict=True)))
+                num = mpmath.diff(
+                    lambda *vs: _mp_value(f0, dict(zip(xs, vs, strict=True))),
+                    at,
+                    tuple(n for _, n in orders),
                 )
-            )
-        except (TypeError, ValueError, ZeroDivisionError):
-            continue
-        if not (math.isfinite(exact.real) and math.isfinite(num.real)):
-            continue
-        if abs(exact - num) > 1e-8 * (1 + abs(exact)):
-            return False
-        good += 1
+            except (TypeError, ValueError, ZeroDivisionError):
+                continue
+            if not (mpmath.isfinite(exact) and mpmath.isfinite(num)):
+                continue
+            if abs(exact - num) > mpmath.mpf("1e-25") * (1 + abs(exact)):
+                return False
+            good += 1
     return good > 0
 
 
@@ -288,10 +306,11 @@ def _partial(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     f = expr_of(_need(args, "expr", "x**2*y**3"), g)
     xs = symbols_for(_need(args, "variables", '["x", "y"]'))
     d = sp.simplify(sp.diff(f, *xs))
-    check = f
+    # D90: before, the check was the same sympy derivative again; now the numerical mixed derivative
+    orders: dict[Any, int] = {}
     for v in xs:
-        check = sp.diff(check, v)
-    verified = is_zero(d - check)
+        orders[v] = orders.get(v, 0) + 1
+    verified = _check_derivative_numeric(f, d, list(orders.items()))
     ctx.formatted = f"Partial derivative: {d}"
     return {"derivative": str(d), "verified": verified}
 
@@ -413,9 +432,34 @@ def _bound_list(args: dict[str, Any], g0: Grammar, example: str) -> tuple[list[A
     return lims, g
 
 
+def _numeric_multi(integrand: Any, lims: list[tuple[Any, Any, Any]]) -> float:
+    """Nested numerical integral of the region (scipy nquad, the first bound innermost), for the back-check.
+
+    D91: before, Integral(...).evalf(15) stayed an unevaluated Integral for every multiple integral, so `verified`
+    was always false in 2D, and in 3D it only said that sympy had found a closed form.
+    """
+    from scipy import integrate
+
+    syms = [v for v, _, _ in lims]
+    f = compile_expr(integrand, syms)
+
+    def bound(e: Any, outer: list[Any]) -> Callable[..., float]:
+        if not getattr(e, "free_symbols", None):
+            c = float(e)
+            return lambda *_: c
+        return compile_expr(e, outer)
+
+    ranges = []
+    for i, (_, a, b) in enumerate(lims):
+        fa, fb = bound(a, syms[i + 1 :]), bound(b, syms[i + 1 :])
+        ranges.append(lambda *outer, fa=fa, fb=fb: [fa(*outer), fb(*outer)])
+    return float(integrate.nquad(f, ranges, opts={"limit": 100})[0])
+
+
 @op("multi_integrate")
 def _multi(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     lims, g = _bound_list(args, _g(args), '[["x", 0, 1], ["y", 0, 2]]')
+    check_bound_order(lims)  # D91
     f = expr_of(_need(args, "expr", "x*y"), g)
     coords = args.get("coords", "cartesian")
     names = {str(v) for v, _, _ in lims}
@@ -440,14 +484,12 @@ def _multi(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     val = sp.simplify(sp.integrate(integrand, *lims))
     num = _num(val)
     verified = False
-    if num is not None and len(lims) <= 2:
+    if num is not None:
         try:
-            chk = complex(sp.Integral(integrand, *lims).evalf(15))
+            chk = _numeric_multi(integrand, lims)
             verified = abs(chk - num) <= 1e-8 * (1 + abs(num))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, ZeroDivisionError, OverflowError):
             verified = False
-    elif num is not None:
-        verified = not val.has(sp.Integral)
     ctx.formatted = f"Multiple integral = {val}"
     if coords != "cartesian":
         ctx.warn(f"Jacobian added automatically: {jac}.")
@@ -897,6 +939,17 @@ def _ics(raw: dict[str, Any] | None, funcs: dict[str, Any], x: Any, g: Grammar) 
     return out
 
 
+def _ode_system_check(eqs: list[Any], sols: list[Any]) -> bool:
+    """Each equation of the system, with every function replaced by its solution, simplifies to zero (D90)."""
+    rep = {s.lhs: s.rhs for s in sols}
+    try:
+        return bool(sols) and all(
+            is_zero(sp.simplify((e.lhs - e.rhs).subs(rep).doit())) for e in eqs
+        )
+    except (TypeError, ValueError, NotImplementedError, AttributeError):
+        return False
+
+
 @op("ode")
 def _ode(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     names = list(args.get("variables") or ["y", "x"])
@@ -930,9 +983,9 @@ def _ode(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         ) from None
     sols: list[Any] = sol if isinstance(sol, list) else [sol]
     verified = (
-        all(sp.checkodesol(eqs[0] if len(eqs) == 1 else eqs, s)[0] is True for s in sols)
+        all(sp.checkodesol(eqs[0], s)[0] is True for s in sols)
         if len(eqs) == 1
-        else True
+        else _ode_system_check(eqs, sols)  # D90: it was True without any check
     )
     text_sol = str(sols[0].rhs) if len(sols) == 1 else "; ".join(f"{s.lhs} = {s.rhs}" for s in sols)
     ctx.formatted = f"Solution: {text_sol}"
@@ -1159,7 +1212,7 @@ def _matrix(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         p = (args.get("expr") or "2").strip()
         ordv: Any = {"1": 1, "2": 2, "oo": sp.oo, "inf": sp.oo, "fro": "fro"}.get(p)
         if ordv is None:
-            raise ToolError("INVALID_ARGUMENT", "Norma: expr = '1', '2', 'oo' o 'fro'.", '"fro"')
+            raise ToolError("INVALID_ARGUMENT", "Norm: expr = '1', '2', 'oo' or 'fro'.", '"fro"')
         out.update(value=str(sp.simplify(A.norm(ordv))), verified=True)
     elif mop == "transpose":
         out.update(matrix=mat_str(A.T), verified=A.T.T == A)
@@ -1367,6 +1420,69 @@ def _recurrence(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     }
 
 
+def _at(v: Any, subs: dict[Any, Any]) -> Any:
+    return v.subs(subs) if isinstance(v, sp.Basic) else v
+
+
+def _close(a: Any, b: Any) -> bool:
+    va, vb = complex(sp.N(a, 30)), complex(sp.N(b, 30))
+    return abs(va - vb) <= 1e-12 * max(1.0, abs(va), abs(vb))
+
+
+def _poly_verify(pop: str, p: Any, q: Any, x: Any, value: Any) -> bool:
+    """Independent check of a `polynomial` result (D90; before, `verified` was True without a check).
+
+    The other symbols get rational values; the roots come from nroots at 30 digits. discriminant =
+    a^(2n-2) prod (r_i - r_j)^2, resultant = a^deg(q) prod q(r_i), vieta from prod (t - r_i), nroots by the
+    residual relative to the size of the terms, coeffs by rebuilding the polynomial, degree by the limit of
+    p / x^n at infinity (finite and nonzero).
+    """
+    try:
+        if pop == "coeffs":
+            n = len(value) - 1
+            return is_zero(sp.expand(sum(c * x ** (n - i) for i, c in enumerate(value)) - p))
+        syms = p.free_symbols | (q.free_symbols if q is not None else set())
+        subs = {
+            s: sp.Rational(7 + 2 * i, 5)
+            for i, s in enumerate(sorted(syms - {x}, key=lambda s: s.name))
+        }
+        if pop == "degree":
+            lim = sp.limit(p.subs(subs) / x ** int(value), x, sp.oo)
+            return bool(lim.is_finite) and lim != 0
+        P = sp.Poly(p.subs(subs), x)
+        if pop == "nroots":
+            if len(value) != P.degree():
+                return False
+            for r in value:
+                terms = [
+                    abs(complex(sp.N(c * r**k, 30))) for k, c in enumerate(reversed(P.all_coeffs()))
+                ]
+                if not abs(complex(sp.N(P.as_expr().subs(x, r), 30))) <= 1e-20 * max(terms):
+                    return False
+            return True
+        roots = P.nroots(n=30)
+        a, n = P.LC(), int(P.degree())  # -oo (zero polynomial): TypeError, False
+        if pop == "discriminant":
+            pr = sp.Mul(*[(roots[i] - roots[j]) ** 2 for i in range(n) for j in range(i + 1, n)])
+            return _close(a ** (2 * n - 2) * pr, _at(value, subs))
+        if pop == "resultant":
+            if q is None:
+                return False
+            Q = sp.Poly(q.subs(subs), x)
+            return _close(
+                a ** Q.degree() * sp.Mul(*[Q.as_expr().subs(x, r) for r in roots]), _at(value, subs)
+            )
+        if pop == "vieta":
+            t = sp.Dummy("t")
+            cs = sp.Poly(sp.Mul(*[t - r for r in roots]), t).all_coeffs()
+            return len(value) == n and all(
+                _close((-1) ** k * cs[k], _at(value[f"e{k}"], subs)) for k in range(1, n + 1)
+            )
+    except (TypeError, ValueError, ZeroDivisionError, NotImplementedError, sp.PolynomialError):
+        return False
+    return False
+
+
 @op("polynomial")
 def _polynomial(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     g = _g(args)
@@ -1376,6 +1492,7 @@ def _polynomial(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     p = polys[0]
     P = sp.Poly(p, x)
     value: Any
+    q = polys[1] if len(polys) > 1 else None
     verified = True
     if pop == "roots":
         r = sp.roots(P)
@@ -1384,23 +1501,28 @@ def _polynomial(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         if sum(r.values()) != P.degree():
             ctx.warn("Some roots have no closed form: use poly_op 'nroots'.")
     elif pop == "nroots":
-        value = [str(v) for v in P.nroots(n=30)]
+        nr = P.nroots(n=30)
+        value = [str(v) for v in nr]
+        verified = _poly_verify(pop, p, None, x, nr)
     elif pop == "factor_list":
         c, fl = cast(tuple[Any, list[tuple[Any, int]]], sp.factor_list(p, x))
         value = {"coefficient": str(c), "factors": [[str(f), int(m)] for f, m in fl]}
         verified = is_zero(c * sp.Mul(*[f**m for f, m in fl]) - p)
     elif pop == "discriminant":
-        value = str(sp.discriminant(P))
+        disc = sp.discriminant(P)
+        value = str(disc)
+        verified = _poly_verify(pop, p, None, x, disc)
     elif pop in {"resultant", "gcd"}:
-        if len(polys) < 2:
+        if q is None:
             raise ToolError(
                 "INVALID_ARGUMENT",
                 "Two polynomials separated by ';' are needed.",
                 "x**2 - 1; x**2 + 2*x + 1",
             )
-        q = polys[1]
         if pop == "resultant":
-            value = str(sp.resultant(p, q, x))
+            res = sp.resultant(p, q, x)
+            value = str(res)
+            verified = _poly_verify(pop, p, q, x, res)
         else:
             gg = sp.gcd(p, q)
             value = str(gg)
@@ -1408,10 +1530,15 @@ def _polynomial(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     elif pop == "vieta":
         cs = P.all_coeffs()
         lead = cs[0]
-        value = {f"e{k}": str(sp.simplify((-1) ** k * cs[k] / lead)) for k in range(1, len(cs))}
+        ev = {f"e{k}": sp.simplify((-1) ** k * cs[k] / lead) for k in range(1, len(cs))}
+        value = {k: str(v) for k, v in ev.items()}
+        verified = _poly_verify(pop, p, None, x, ev)
     elif pop == "coeffs":
-        value = [str(c) for c in P.all_coeffs()]
+        cs = P.all_coeffs()
+        value = [str(c) for c in cs]
+        verified = _poly_verify(pop, p, None, x, cs)
     else:
         value = str(P.degree())
+        verified = _poly_verify("degree", p, None, x, P.degree())
     ctx.formatted = f"{pop}: {value}"
     return {"poly_op": pop, "value": value, "verified": verified}

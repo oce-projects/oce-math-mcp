@@ -202,6 +202,11 @@ class ComputePool:
         self.size = size or (
             int(env_size) if env_size else max(1, min(4, (os.cpu_count() or 2) - 1))
         )
+        # D96: 0 or a negative size started no process, every call waited and failed
+        if self.size < 1:
+            raise ValueError(
+                f"The pool needs at least 1 computing process, not {self.size} (OCE_MATH_POOL_SIZE)."
+            )
         self.timeout_s = timeout_s
         self.memory_mb = memory_mb
         self._job: WinJob | None = None

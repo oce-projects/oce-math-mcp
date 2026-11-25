@@ -16,6 +16,9 @@ CODES = frozenset(
     }
 )
 
+# D74: an ok result never holds nan or oo; a value outside the float range is this MATH_ERROR (D95, D93).
+NOT_FINITE = "The result is not finite: the inputs are outside the floating-point range (overflow or underflow)."
+
 
 class ToolError(Exception):
     """Error with code, message and optional corrected example."""

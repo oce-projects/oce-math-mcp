@@ -332,7 +332,8 @@ def _thermistor(model: str, p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
             res = r0 * math.exp(beta * (1 / t - 1 / t0))
         else:
             res = need(p, "R", "electrical_resistance")
-            t = 1 / (1 / t0 + math.log(res / r0) / beta)
+            inv = 1 / t0 + math.log(res / r0) / beta
+            t = 1 / inv if inv > 0 else -1.0  # D92: no check before, R = 1e-10 ohm gave -208 K
     else:
         a, b = need(p, "a", None, positive=False), need(p, "b", None, positive=False)
         c = need(p, "c", None, positive=False)
@@ -340,7 +341,8 @@ def _thermistor(model: str, p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         if key == "R":
             res = need(p, "R", "electrical_resistance")
             lr = math.log(res)
-            t = 1 / (a + b * lr + c * lr**3)
+            inv = a + b * lr + c * lr**3
+            t = 1 / inv if inv > 0 else -1.0
         else:
             t = temperature(p, "T")
             assert t is not None
@@ -352,10 +354,10 @@ def _thermistor(model: str, p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
             x = y + math.sqrt((b / (3 * c)) ** 3 + y * y)
             res = math.exp(b / (3 * c * math.cbrt(x)) - math.cbrt(x))
             ctx.formula += "; inverse ln R = b/(3 c x^(1/3)) - x^(1/3), y = (a - 1/T)/(2c), x = y + sqrt((b/(3c))^3 + y^2)"
-        if t <= 0:
-            raise ToolError(
-                "INVALID_ARGUMENT", "The coefficients give a temperature <= 0 K for this R."
-            )
+    if t <= 0:  # D92: for both models (it was only in the Steinhart-Hart branch)
+        raise ToolError(
+            "INVALID_ARGUMENT", "The coefficients give a temperature <= 0 K for this R."
+        )
     ctx.formatted = f"Thermistor: R = {fmt_sig(res, 6)} ohm at T = {fmt_sig(t, 6)} K ({fmt_sig(t - 273.15, 6)} C)."
     return {"R": res, "T": t, "T_C": t - 273.15}
 

@@ -24,7 +24,7 @@ from typing import Any
 from ..constants import lookup
 from ..envelope import Ctx
 from ..errors import ToolError
-from .eng_base import choice, fmt_sig, need, one_of, only, op, qty, units_for
+from .eng_base import choice, fmt_sig, need, one_of, only, op, qty, range_guard, units_for
 
 G = lookup("Newtonian constant of gravitation")[1]
 _MAX_MASSES = 1000
@@ -83,6 +83,7 @@ def _mu(p: dict[str, Any]) -> float:
 
 
 @op("gravitation", ("mode", *sorted(set().union(*_MODES.values()))))
+@range_guard
 def _gravitation(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     mode = choice(p, "mode", tuple(_MODES))
     only(p, mode, _MODES[mode])

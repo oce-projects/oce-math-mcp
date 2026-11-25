@@ -465,6 +465,10 @@ def _belt(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
             if m_l is not None:
                 out["F_centrifugal"] = Fc
                 formulas.append("F_c = m_l v^2 added to T1 and T2")
+        elif p.get("m_l") is not None:  # D92: it was ignored in silence
+            raise ToolError(
+                "INVALID_ARGUMENT", "m_l (centrifugal tension) needs P and n, for T1 and T2."
+            )
     elif p.get("groove_deg") is not None or p.get("m_l") is not None:
         raise ToolError("INVALID_ARGUMENT", "groove_deg and m_l are used with mu (friction).")
     ctx.units = units_for(
@@ -597,6 +601,11 @@ def _gear(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     m = need(p, "m", "length")
     z1, z2 = integer(p, "z1"), integer(p, "z2")
     alpha = math.radians(qty(p, "alpha_deg", None, default=20.0) or 20.0)
+    if not 0 < alpha < math.radians(45):  # D92: 90 degrees gave a contact ratio of 1e16
+        raise ToolError(
+            "INVALID_ARGUMENT",
+            "params.alpha_deg (pressure angle) must be between 0 and 45 degrees (usually 20).",
+        )
     beta = math.radians(qty(p, "beta_deg", None, positive=False, default=0.0) or 0.0)
     if not 0 <= beta < math.radians(45):
         raise ToolError(

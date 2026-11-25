@@ -392,6 +392,11 @@ def _heating_cooling(p: dict[str, Any], ctx: Ctx, pt: float) -> dict[str, Any]:
     w1 = _state_w(p, "1", t1, pt)
     s1 = describe(t1, w1, pt, ctx, " 1")
     rh2 = _ratio(p, "RH2")
+    if rh2 is not None and t2 >= t1:  # D92: heating with RH2 gave condensate
+        raise ToolError(
+            "INVALID_ARGUMENT",
+            "RH2 is for a dehumidifying coil (T2 < T1): heating does not condense water.",
+        )
     w_sat2 = w_from_pw(pws(t2 + 273.15), pt)
     if w1 <= w_sat2 and rh2 is None:
         w2, cond = w1, 0.0

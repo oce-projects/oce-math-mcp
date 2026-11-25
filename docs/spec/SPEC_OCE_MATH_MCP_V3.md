@@ -1,6 +1,6 @@
 # `oce-math-mcp` V3 specification: final tool catalogue
 
-Spec version: **4.12.1** of 2026-11-25 (3.1.0: 3D drawing operations in `geom3d_calc` and the
+Spec version: **4.13.0** of 2026-11-25 (3.1.0: 3D drawing operations in `geom3d_calc` and the
 `show_steps` field, decisions D22 and D23; 3.2.0: `date_calc` with recurring events, time zones, real
 hours between two instants, age in months and weeks, decision D24; 3.3.0: tool status in server
 0.1.0, `lean_check` with code filter and axiom check, decision D36; 3.4.0:
@@ -30,7 +30,7 @@ decision D47;
 3.26.0: catenary cables and journal bearings, decision D58;
 3.27.0: 2D and 3D trusses, decision D59;
 3.28.0: torsion of non-circular sections, decision D60;
-4.0.0: everything in English, decision D61 (breaking: `formatted_it` -> `formatted`, step `text_it` -> `text`, English separators and ISO dates in texts, `vat`/`vat_add`/`vat_remove`/`withholding` in `math_eval`, no `weekday_it` in `date_calc`, English text values in `eng_calc`, no Italian particle aliases); 4.1.0: geometric and wave optics, decision D64; 4.2.0: practical electronics, decision D65; 4.3.0: friction in simple machines, decision D66; 4.4.0: electric machines, decision D67; 4.5.0: thin plates, decision D68; 4.6.0: continuous beams, decision D69; 4.7.0: local losses, decision D70; 4.8.0: stress concentration at holes, decision D71; 4.9.0: rotor balancing, decision D72; 4.10.0: rolling without slipping, decision D73; 4.10.1: finite results in eng_calc, decision D74; 4.11.0: kinetic theory of gases, decision D87; 4.12.0: Newtonian gravitation, decision D88; 4.12.1: `gravitation.rotating_body` towards the equator in both hemispheres, decision D89). Server: `oce-math-mcp` (package `oce_math_mcp`).
+4.0.0: everything in English, decision D61 (breaking: `formatted_it` -> `formatted`, step `text_it` -> `text`, English separators and ISO dates in texts, `vat`/`vat_add`/`vat_remove`/`withholding` in `math_eval`, no `weekday_it` in `date_calc`, English text values in `eng_calc`, no Italian particle aliases); 4.1.0: geometric and wave optics, decision D64; 4.2.0: practical electronics, decision D65; 4.3.0: friction in simple machines, decision D66; 4.4.0: electric machines, decision D67; 4.5.0: thin plates, decision D68; 4.6.0: continuous beams, decision D69; 4.7.0: local losses, decision D70; 4.8.0: stress concentration at holes, decision D71; 4.9.0: rotor balancing, decision D72; 4.10.0: rolling without slipping, decision D73; 4.10.1: finite results in eng_calc, decision D74; 4.11.0: kinetic theory of gases, decision D87; 4.12.0: Newtonian gravitation, decision D88; 4.12.1: `gravitation.rotating_body` towards the equator in both hemispheres, decision D89; 4.13.0: corrections of the audit of the repository, decisions D90-D97). Server: `oce-math-mcp` (package `oce_math_mcp`).
 
 **This spec replaces V2** (`SPEC_OCE_MATH_MCP_E_PIANO_V2.md`) for the tool catalogue and for the
 JSON schemas. The decisions behind it are D13-D21 in `docs/DECISIONS.md`.
@@ -905,6 +905,27 @@ D88 conventions: `g` in `point_masses` is a vector pointing towards the masses; 
 towards the centre (or the plane of the ring). Potentials are 0 at infinity. A uniform solid sphere has
 g = G M r / R^3 inside; a hollow shell has g = 0 inside. The rotating body is a sphere: the centrifugal
 acceleration omega^2 R cos(latitude) points away from the axis (no flattening, no J2).
+
+Corrections of the audit of 2026-11-25 (spec 4.13.0, decisions D90-D97):
+
+- `math_solve` and `math_verify`: `verified` (and `valid`) is true only after a real check. `diff` and
+  `partial_diff` compare with a 40-digit numerical derivative; systems of ODEs are checked by substitution;
+  `polynomial` nroots, discriminant, resultant, vieta, coeffs and degree have independent numerical checks;
+  an empty list of solutions is not verified. A residual that is undefined (`zoo`, `nan`) is not zero.
+- `math_eval`: `poisson_pmf`, `poisson_cdf`, `binom_pmf`, `binom_cdf`, `gcd`, `lcm`, `mod_inv` and the decimals
+  of `round` need integer counts (INVALID_ARGUMENT otherwise); Poisson mean >= 0, 0 <= p <= 1; outside 0..n
+  the probability is 0; the CDFs take the floor of k.
+- `math_numeric.quad` and `math_solve.multi_integrate`: the first entry of `bounds` is the innermost integral
+  and a bound may use only the variables of the outer entries (INVALID_ARGUMENT otherwise).
+- `eng_calc`: `gear_spur` 0 < `alpha_deg` < 45; `belt_drive` `m_l` needs `P` and `n`; `bolt_joint` uses the
+  magnitude of `Fv` and needs `Ft` >= 0; `psychrometrics` heating_cooling `RH2` needs `T2` < `T1`; the
+  thermistor never answers T <= 0 K; `control_system` second_order times are exact for any damping.
+  `kinetic_theory` and `gravitation` give the D74 error for inputs outside the floating-point range.
+- `geom3d_calc`: counts (`n`, `count`, `n_holes`) are integers, checked before any list is built;
+  `mesh_properties` of a mesh with volume 0 has `centroid` and `inertia` null; a parametric curve with
+  non-finite points is INVALID_ARGUMENT, a divergent length MATH_ERROR; any other curve whose points or
+  length leave the floating-point range gives the D74 MATH_ERROR.
+- `python_sandbox`: numpy integers count for the caps; the shift cap is on the size of the result.
 
 Conventions:
 

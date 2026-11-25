@@ -345,6 +345,15 @@ def _bolt(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         formulas.append("VDI 2230: T = Fp_C (0.159 P + 0.578 d2 mu_G + D_km mu_K / 2)")
     Fv = qty(p, "Fv", "force", positive=False, need=False)
     Ft = qty(p, "Ft", "force", positive=False, need=False)
+    # D92: the shear force acts in any direction (its sign gave a negative utilization and ok = true); a
+    # negative Ft is compression, which the bolt does not carry: the joined parts do
+    if Fv is not None:
+        Fv = abs(Fv)
+    if Ft is not None and Ft < 0:
+        raise ToolError(
+            "INVALID_ARGUMENT",
+            "params.Ft is the tension in the bolt (>= 0): compression goes through the parts.",
+        )
     mu = qty(p, "mu_slip", None, need=False)
     if mu is not None:
         ks = qty(p, "ks", None, default=1.0)

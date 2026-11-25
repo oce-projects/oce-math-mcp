@@ -26,7 +26,18 @@ from typing import Any
 from ..constants import lookup
 from ..envelope import Ctx
 from ..errors import ToolError
-from .eng_base import choice, fmt_sig, integer, need, one_of, only, op, temperature, units_for
+from .eng_base import (
+    choice,
+    fmt_sig,
+    integer,
+    need,
+    one_of,
+    only,
+    op,
+    range_guard,
+    temperature,
+    units_for,
+)
 
 K_B = lookup("Boltzmann constant")[1]
 N_A = lookup("Avogadro constant")[1]
@@ -115,6 +126,7 @@ def _speeds(m: float, t: float) -> dict[str, float]:
 
 
 @op("kinetic_theory", ("mode", *sorted(set().union(*_MODES.values()))))
+@range_guard
 def _kinetic(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     mode = choice(p, "mode", tuple(_MODES))
     only(p, mode, _MODES[mode])
