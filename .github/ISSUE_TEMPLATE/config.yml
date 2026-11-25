@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security problem
+    url: https://github.com/oce-projects/oce-math-mcp/security/policy
+    about: Do not open a public issue for a vulnerability; follow the security policy.
+  - name: Installation guide
+    url: https://github.com/oce-projects/oce-math-mcp#installation
+    about: Steps, the self-check command and common problems.

@@ -1,4 +1,4 @@
-"""Command line: stdio or HTTP server, schema dump, spec synchronisation, benchmark."""
+"""Command line: stdio or HTTP server, schema dump, spec synchronisation, benchmark, self-check."""
 
 from __future__ import annotations
 
@@ -78,6 +78,11 @@ def main(argv: list[str] | None = None) -> int:
         help="With --benchmark: also write the Markdown table to this file.",
     )
     ap.add_argument(
+        "--self-check",
+        action="store_true",
+        help="Start the server over stdio as an MCP client would and check it (JSON report; exit 0 if ok).",
+    )
+    ap.add_argument(
         "--install-lean",
         action="store_true",
         help="Install elan, Lean 4 and Mathlib inside the repo (D17).",
@@ -89,6 +94,12 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
 
+    if args.self_check:
+        from .selfcheck import run as self_check
+
+        rep = self_check()
+        sys.stdout.write(json.dumps(rep, ensure_ascii=False, indent=2) + "\n")
+        return 0 if rep["ok"] else 1
     if args.dump_schemas:
         from .schemas import dump
 

@@ -69,10 +69,15 @@ async def _stdio_roundtrip() -> tuple[list[str], dict, dict]:
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
 
+    from oce_math_mcp.selfcheck import child_errlog
+
     params = StdioServerParameters(
         command=sys.executable, args=["-m", "oce_math_mcp"], env=_server_env()
     )
-    async with stdio_client(params) as (read, write), ClientSession(read, write) as session:
+    async with (
+        stdio_client(params, errlog=child_errlog()) as (read, write),
+        ClientSession(read, write) as session,
+    ):
         await session.initialize()
         tools = await session.list_tools()
         res = await session.call_tool("math_eval", {"expr": "1/3", "exact_mode": "fraction"})

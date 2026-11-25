@@ -336,7 +336,12 @@ def handle(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
             [str(lake_exe()), "env", "lean", str(src)], proj, env, limits.LEAN_TIMEOUT_S
         )
     except subprocess.TimeoutExpired:
-        raise ToolError("TIMEOUT", f"Lean beyond {limits.LEAN_TIMEOUT_S:.0f} s.") from None
+        raise ToolError(
+            "TIMEOUT",
+            f"Lean beyond {limits.LEAN_TIMEOUT_S:.0f} s. The first check after a restart loads Mathlib "
+            "from disk and can take longer than that; the next ones take about 20 s. Run the same check "
+            "again; if it still times out, split the proof into smaller lemmas.",
+        ) from None
     finally:
         src.unlink(missing_ok=True)
     elapsed = time.perf_counter() - t0

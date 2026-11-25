@@ -1,0 +1,67 @@
+name: Bug or wrong result
+description: A wrong result, a crash, a timeout or an unclear error message.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for the report. A security problem does not go here: follow `SECURITY.md`.
+        Remove personal data (names, paths, tokens) from everything you paste.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `uv run oce-math-mcp --version`.
+      placeholder: oce-math-mcp 0.3.0
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Operating system and Python
+      placeholder: Windows 10, Python 3.13.13
+    validations:
+      required: true
+  - type: textarea
+    id: self_check
+    attributes:
+      label: Self-check report
+      description: Output of `uv run oce-math-mcp --self-check`.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: call
+    attributes:
+      label: Tool call
+      description: The tool name and the exact JSON arguments.
+      placeholder: |
+        tool: eng_calc
+        {"operation": "geometric_optics", "params": {"mode": "mirror", "f": 0.1, "d_o": 0.3}}
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Response
+      description: The full JSON response of the server.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result and its source
+      description: >-
+        What the answer should be, and where the expected value comes from (book, standard, paper,
+        or an independent computation with mpmath or SymPy, with the code).
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I removed personal data from this report.
+          required: true

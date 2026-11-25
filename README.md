@@ -16,7 +16,7 @@ arithmetic, symbolic algebra, calculus, number theory, numerical methods, answer
 Italian calendar, 3D geometry for CAD/CNC, formal proofs in Lean 4 and 78 engineering, physics
 and chemistry operations.
 
-**Status: version 0.3.0 (in progress; 0.2.0 is the last published version).** All 10 tools answer.
+**Status: version 0.3.0.** All 10 tools answer.
 The contract defines 191 operations and all 191 are implemented (for `eng_calc` a test compares
 the contract with the code).
 
@@ -65,7 +65,40 @@ The full contract (names, JSON schemas, examples) is in `docs/spec/SPEC_OCE_MATH
 
 ## Installation
 
-You need Python 3.12 or newer and [uv](https://docs.astral.sh/uv/).
+Five steps. An AI agent that installs the server for you can follow
+[`llms-install.md`](llms-install.md) instead: the same steps, with a check after each one.
+
+### 1. Requirements
+
+- [Git](https://git-scm.com/downloads).
+- [uv](https://docs.astral.sh/uv/getting-started/installation/), the Python package manager. If
+  Python 3.12 or newer is missing, uv downloads it.
+- About 0.6 GB of disk for the Python environment (564 MB measured on Windows, development tools
+  included). Lean 4 is optional and needs about 10 GB more (see [Lean 4 and Mathlib](#lean-4-and-mathlib)).
+
+Install uv on Windows (PowerShell):
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+Install uv on macOS or Linux:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+Open a new terminal afterwards, so that `uv` is on the `PATH`.
+
+### 2. Download and install
+
+```powershell
+git clone https://github.com/oce-projects/oce-math-mcp.git
+```
+
+```powershell
+cd oce-math-mcp
+```
 
 ```powershell
 uv sync --compile-bytecode
@@ -80,10 +113,107 @@ If the repo is on a network drive, keep the Python environment on a local drive 
 $env:UV_PROJECT_ENVIRONMENT = "$HOME\.venvs\oce-math-mcp"; uv sync --compile-bytecode
 ```
 
-Platform: tested on Windows. The Linux code path (memory limit with `RLIMIT_AS`, process groups)
-exists but is not tested.
+### 3. Check the installation
+
+```powershell
+uv run oce-math-mcp --self-check
+```
+
+The command starts the server as an MCP client does (stdio), lists the tools and runs two
+calls with known answers. It prints a JSON report and exits with code 0 only if every check passes:
+
+```json
+{
+  "ok": true,
+  "server_version": "0.3.0",
+  "python": "3.13.13",
+  "tools": 10,
+  "checks": [
+    {
+      "name": "initialize",
+      "ok": true,
+      "detail": "oce-math-mcp 0.3.0"
+    },
+    {
+      "name": "tools/list",
+      "ok": true,
+      "detail": "10 tools"
+    },
+    {
+      "name": "math_eval",
+      "ok": true,
+      "detail": "2**100 + 1/3 = 3802951800684688204490109616129/3"
+    },
+    {
+      "name": "eng_calc",
+      "ok": true,
+      "detail": "mirror f = 0.1 m, d_o = 0.3 m: d_i = 0.15 m (0.15 expected)"
+    }
+  ],
+  "lean": "not installed (optional: --install-lean)",
+  "seconds": 4.41
+}
+```
+
+`lean` is information only: without Lean the other 9 tools work and the check still passes.
+
+### 4. Register the server in your MCP client
+
+Use the absolute path of the folder you cloned in step 2.
+
+Claude Code (one command, available in every project with `--scope user`):
+
+```powershell
+claude mcp add --scope user oce-math -- uv run --directory C:\path\to\oce-math-mcp oce-math-mcp
+```
+
+Claude Desktop and other clients that read an `mcpServers` JSON file. For Claude Desktop the file
+is `%APPDATA%\Claude\claude_desktop_config.json` on Windows and
+`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS:
+
+```json
+{
+  "mcpServers": {
+    "oce-math": {
+      "command": "uv",
+      "args": ["run", "--directory", "C:/path/to/oce-math-mcp", "oce-math-mcp"]
+    }
+  }
+}
+```
+
+On Windows write the path with forward slashes, as above, or write every backslash twice: JSON reads
+a single backslash as an escape. Restart the client after the change.
+
+A local model without an MCP client (for example through an OpenAI-compatible API) can use the
+same tools as function definitions:
+
+```powershell
+uv run oce-math-mcp --dump-schemas --format openai
+```
+
+### 5. Optional: Lean 4
+
+Only `lean_check` needs it. See [Lean 4 and Mathlib](#lean-4-and-mathlib).
+
+### Platform
+
+Tested on Windows 10 with Python 3.12.13 and 3.13.13. The Linux code path (memory limit with
+`RLIMIT_AS`, process groups) exists but is not tested; macOS is not tested.
+
+### Common problems
+
+| Problem | Cause and fix |
+|---|---|
+| `uv` is not found | open a new terminal after installing uv |
+| the client cannot start the server, but `--self-check` passes | desktop apps do not always see the terminal `PATH`: put the full path of `uv` in `command` (`where.exe uv` on Windows, `which uv` on macOS and Linux) |
+| the first call takes a few seconds | the server starts its computing processes: 3.603 s for one process, measured in `docs/BENCHMARK.md` |
+| `lean_check` answers `TIMEOUT` on the first proof after a restart | Lean loads Mathlib from disk the first time; run the same check again (see below) |
+| `uv sync` is slow or fails on a network drive | use a local environment with `UV_PROJECT_ENVIRONMENT` (step 2) |
 
 ## Running
+
+The MCP client starts the server by itself (step 4). To start it by hand, from the repo folder:
 
 `stdio` transport (the one MCP clients use):
 
@@ -97,15 +227,8 @@ Streamable HTTP on `http://127.0.0.1:8012/mcp`:
 uv run oce-math-mcp --http --port 8012
 ```
 
-Example configuration for an MCP client:
-
-```json
-{
-  "mcpServers": {
-    "oce-math": { "command": "uv", "args": ["run", "--directory", "<path of the repo>", "oce-math-mcp"] }
-  }
-}
-```
+The HTTP transport has no authentication. Keep the default host `127.0.0.1`; do not use
+`--host 0.0.0.0` on a network you do not control.
 
 ## Options
 
@@ -114,6 +237,7 @@ Example configuration for an MCP client:
 | `--http`, `--host`, `--port` | streamable HTTP instead of stdio (defaults `127.0.0.1` and `8012`) |
 | `--pool-size N` | computing processes (default: `OCE_MATH_POOL_SIZE`, otherwise CPU-1, at most 4) |
 | `--no-pool` | compute in the server process, for tests only: the timeout cannot stop the computation |
+| `--self-check` | start the server over stdio, run 4 checks and print a JSON report (exit code 0 only if all pass) |
 | `--dump-schemas --format mcp\|openai` | print the schemas of the 10 tools and exit |
 | `--benchmark` | measure start, latency and restart of the computing processes (JSON result) |
 | `--benchmark-md FILE` | with `--benchmark`: also write the Markdown table (for example `docs/BENCHMARK.md`) |
@@ -141,7 +265,8 @@ uv run oce-math-mcp --install-lean
 
 The command downloads elan, installs the toolchain pinned in `lean/lean-toolchain`, then downloads
 Mathlib and its precompiled files (`lake exe cache get`). Without Lean, `lean_check` answers with a
-clear error and the other tools keep working. About 10 GB are needed: measured 3,287.2 MB for elan
+clear error and the other tools keep working. After the installation `--self-check` reports
+`"lean": "installed"`. About 10 GB are needed: measured 3,287.2 MB for elan
 and 6,993.7 MB for Mathlib. Measured times: `docs/BENCHMARK.md`.
 
 If the repo is on a network drive, install Lean on a local drive (decision D37: on the network
@@ -150,6 +275,10 @@ drive the installation failed 2 times out of 2). Give the same variables to the 
 ```powershell
 $env:OCE_MATH_ELAN_HOME = "$HOME\.oce-math-mcp\elan"; $env:OCE_MATH_LEAN_PROJECT = "$HOME\.oce-math-mcp\lean"; uv run oce-math-mcp --install-lean
 ```
+
+The first check after a restart is slower: Lean loads Mathlib from disk. Measured on 25/11/2026:
+two first checks after hours of inactivity went beyond the 60 s limit, the next ones took 16.9 to
+20.1 s. The limit stays (decision D16); the `TIMEOUT` answer says to run the same check again.
 
 `lean_check` rejects code that can run programs or add axioms (`#eval`, `elab`, `macro`,
 `run_cmd`, `axiom`, `native_decide` and others, decision D36). A proof is valid only if it uses
@@ -167,10 +296,14 @@ the standard axioms (`propext`, `Classical.choice`, `Quot.sound`).
   Computations run in separate processes: when the time runs out the process is killed and
   replaced (D32). Memory limit per process (Job Object on Windows, `RLIMIT_AS` on Linux).
 - No exception leaves the server: every error has `code`, `message` and `example`.
+- The streamable HTTP transport has no authentication: it listens on `127.0.0.1` by default. Do not
+  bind it to `0.0.0.0` on a network you do not control.
+- To report a vulnerability, see `SECURITY.md`.
 
 ## Development
 
-Tests run on a local machine, not in GitHub Actions.
+How to propose a change, the test rules and how to open an issue: `CONTRIBUTING.md`. Tests run on a
+local machine, not in GitHub Actions.
 
 ```powershell
 uv run ruff check src tests
@@ -198,6 +331,8 @@ one scans the repo for personal data before publication.
 - `docs/DECISIONS.md`: decision log (the D numbers quoted in the code)
 - `docs/BENCHMARK.md`: measured times
 - `CHANGELOG.md`: version history
+- `llms-install.md`: installation guide for AI agents
+- `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`: rules for contributors and for security reports
 
 ## Support
 

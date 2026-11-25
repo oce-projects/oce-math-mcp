@@ -2,10 +2,28 @@
 
 Format: one entry per version, newest first. Dates in ISO format (yyyy-mm-dd).
 
-## 0.3.0 - 2026-11-24 (in progress)
+## 0.3.0 - 2026-11-25
 
 Basic sciences: constants, chemistry, nuclear and modern physics, missing mechanical topics.
-The whole repository in English, ready for publication.
+The whole repository in English, ready for publication, with an installation that others can follow.
+
+- Installation for others (D85): `oce-math-mcp --self-check` starts the server over stdio as an MCP
+  client does and runs initialize, tools/list, `math_eval` (2**100 + 1/3, exact) and `eng_calc` (mirror
+  f = 0.1 m, d_o = 0.3 m: d_i = 0.15 m); JSON report, exit code 0 only if all 4 pass; Lean reported
+  as information only. README Installation rewritten in 5 steps (uv, clone, sync, self-check, client
+  registration for Claude Code, Claude Desktop and `mcpServers` JSON files, common problems); new
+  `llms-install.md` for AI agents; `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1 by
+  reference), `SECURITY.md` (private reporting, protections, scope), GitHub issue forms (bug or wrong
+  result, new formula or operation) and pull request template, `CITATION.cff`, project URLs, keywords
+  and classifiers in `pyproject.toml`. `tests/test_install_docs.py`: the documents quote only options
+  that `--help` lists, the README options table lists all of them, the issue form lists the 10 real
+  tools, `CITATION.cff` follows `VERSION`. The stdio test passes `errlog` explicitly:
+  `stdio_client` binds `sys.stderr` when `mcp.client.stdio` is imported, and under pytest that stream
+  has no file descriptor.
+- Lean after a restart (D86): the `TIMEOUT` answer of `lean_check` says that the first check after a
+  restart loads Mathlib from disk and to run it again; README note with the measured times.
+- Python 3.12 tested (3.12.13 on Windows): 1,019 tests passed, 2 skipped for `pyarrow`, 3 Lean tests
+  over the 60 s limit on a cold start and passed when run again (9 of 9).
 
 - Everything in English (D61, spec 4.0.0, breaking): code names, comments, docstrings, tests,
   documents, file names and all server texts (errors, warnings, steps, `formula`, `formatted`).

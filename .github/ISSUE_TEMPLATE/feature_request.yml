@@ -1,0 +1,56 @@
+name: New formula or operation
+description: Propose a formula, an operation or a tool that the server does not have yet.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before writing, check the list of operations in `docs/spec/SPEC_OCE_MATH_MCP_V3.md` and the
+        decisions in `docs/DECISIONS.md`. A new operation is complete only with the parts listed in
+        `CONTRIBUTING.md` (units, formula, validity range, source, tests).
+  - type: dropdown
+    id: tool
+    attributes:
+      label: Tool
+      options:
+        - eng_calc
+        - math_solve
+        - math_numeric
+        - math_verify
+        - number_theory
+        - geom3d_calc
+        - date_calc
+        - math_eval
+        - python_sandbox
+        - lean_check
+        - a new tool
+    validations:
+      required: true
+  - type: textarea
+    id: formula
+    attributes:
+      label: Formula or operation
+      description: The formula, its symbols with SI units, and the range where it is valid.
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: Source
+      description: Book (with edition and page), standard or paper where the formula is published.
+    validations:
+      required: true
+  - type: textarea
+    id: example
+    attributes:
+      label: Worked example
+      description: Input values with units and the expected result, taken from the source if possible.
+    validations:
+      required: true
+  - type: textarea
+    id: use
+    attributes:
+      label: Why it is useful
+      description: Which problems a model could solve with it.
+    validations:
+      required: false

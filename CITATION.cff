@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "oce-math-mcp"
+abstract: >-
+  Mathematics MCP server for local language models: exact arithmetic, SymPy algebra and calculus,
+  number theory, answer checking, Italian calendar, 3D geometry for CAD/CNC, Lean 4 proofs and
+  engineering, physics and chemistry operations, behind an AST sandbox.
+authors:
+  - name: "oce-projects"
+version: "0.3.0"
+date-released: "2026-11-25"
+license: Apache-2.0
+repository-code: "https://github.com/oce-projects/oce-math-mcp"
+keywords:
+  - mcp
+  - mathematics
+  - sympy
+  - lean4
+  - engineering
+  - llm
