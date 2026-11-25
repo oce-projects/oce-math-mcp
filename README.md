@@ -13,11 +13,11 @@
 A mathematics MCP (Model Context Protocol) server for local language models. It is built to train
 **Qwen3.6** and to let it work on calculations that a model cannot do in its head: exact
 arithmetic, symbolic algebra, calculus, number theory, numerical methods, answer checking, the
-Italian calendar, 3D geometry for CAD/CNC, formal proofs in Lean 4 and 79 engineering, physics
+Italian calendar, 3D geometry for CAD/CNC, formal proofs in Lean 4 and 80 engineering, physics
 and chemistry operations.
 
 **Status: version 0.4.0 (in progress).** All 10 tools answer.
-The contract defines 192 operations and all 192 are implemented (for `eng_calc` a test compares
+The contract defines 193 operations and all 193 are implemented (for `eng_calc` a test compares
 the contract with the code).
 
 ## Why
@@ -40,7 +40,7 @@ answers of the training dataset.
 | `lean_check` | checks a proof in Lean 4 with Mathlib (60 s limit) | proof |
 | `date_calc` | Italian calendar `Europe/Rome`: age, holidays, working days, time zones | 12 |
 | `geom3d_calc` | vectors, rotations, quaternions, solids, CNC, 3D drawing calculations | 24 |
-| `eng_calc` | engineering formulas with SI units and the formula used | 79 |
+| `eng_calc` | engineering formulas with SI units and the formula used | 80 |
 
 `eng_calc` covers: strength of materials, machine elements, fluids and heat transfer, circuits,
 control, optics and acoustics, hydrostatics, pumps, open channels, flow meters, compressible flow,
@@ -58,7 +58,8 @@ machines (inclined plane, leadscrew, rolling resistance) and electric machines (
 and synchronous motors), thin plates (circular and rectangular) and continuous beams (theorem of three
 moments, with settlements and fixed ends) local losses at sudden changes of section (Borda-Carnot) and stress concentration at holes (Kirsch,
 Inglis) rotor balancing (one and two planes, ISO balance grades), rolling without slipping and the kinetic theory
-of gases (molecular speeds, Maxwell-Boltzmann distribution, mean free path, effusion, equipartition).
+of gases (molecular speeds, Maxwell-Boltzmann distribution, mean free path, effusion, equipartition) and
+Newtonian gravitation (point masses, spheres and shells, rings, rotating bodies, Gauss's law).
 
 The full contract (names, JSON schemas, examples) is in `docs/spec/SPEC_OCE_MATH_MCP_V3.md` and in
 `docs/spec/oce_math_mcp_tools.json`. Every response has 9 fixed fields: `ok`, `tool`,

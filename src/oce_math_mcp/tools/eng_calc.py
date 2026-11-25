@@ -25,7 +25,8 @@ eng_losses: local losses, Borda-Carnot, D70;
 eng_holes: stress concentration at holes, D71;
 eng_balance: unbalance and rotor balancing, D72;
 eng_rolling: rolling without slipping, D73;
-eng_kinetic: kinetic theory of gases, D87); this module loads them and
+eng_kinetic: kinetic theory of gases, D87;
+eng_grav: Newtonian gravitation, D88); this module loads them and
 exposes `handle` and `OPS`.
 """
 
@@ -42,6 +43,7 @@ from . import (
     eng_em,
     eng_friction,
     eng_gas,
+    eng_grav,
     eng_holes,
     eng_hx,
     eng_hydro,
@@ -81,6 +83,7 @@ __all__ = [
     "eng_em",
     "eng_friction",
     "eng_gas",
+    "eng_grav",
     "eng_holes",
     "eng_hx",
     "eng_hydro",

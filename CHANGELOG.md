@@ -19,6 +19,16 @@ pages), one group at a time.
   chi distribution, the double integral of the wall flux and page and NIST values. Mutation check: 38
   changed formulas out of 38 caught. The `eng_calc` description in the contract now also names the
   topics of D64-D73 and D87 (it stopped at D60).
+- Newtonian gravitation (D88, spec 4.12.0, `eng_grav.py`): operation `eng_calc.gravitation` with 7 modes:
+  `two_bodies` (force, potential energy, fields, mu), `point_masses` (field vector and potential at a point of
+  up to 1000 point masses, centre of mass, force and energy of a test mass), `sphere` (uniform solid sphere or
+  hollow shell inside and outside, mean density, binding energy), `ring` (field and potential on the axis,
+  largest field), `rotating_body` (effective gravity at a latitude, plumb-line deflection), `gauss` (flux and
+  enclosed mass) and `potential_difference` (without cancellation for close radii; work and the error of the
+  uniform-field approximation). `eng_calc` 80 operations, contract 193. 7 tests in
+  `tests/test_gravitation_d88.py` against numpy sums, the gradient of the potential, the shell theorem
+  integrated from rings with mpmath, Gauss's flux through a cube with scipy, numpy vectors in the rotating frame
+  and page values. Mutation check: 39 changed formulas out of 39 caught.
 - Linux tested (Ubuntu 22.04, x86_64, Python 3.12.13, uv 0.11.20): `--self-check` ok in 8.65 s; suite
   1,026 passed and 7 skipped in 44.91 s. macOS is not tested.
 
