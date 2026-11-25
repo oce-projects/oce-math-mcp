@@ -201,9 +201,10 @@ Only `lean_check` needs it. See [Lean 4 and Mathlib](#lean-4-and-mathlib).
 ### Platform
 
 Tested on Windows 10 with Python 3.12.13 and 3.13.13, and on Ubuntu 22.04 (x86_64) with Python
-3.12.13: `--self-check` passes and the test suite gives 1,026 passed and 7 skipped (Lean, `pyarrow` and
-the dataset mirror not installed), so the Linux code path (memory limit with `RLIMIT_AS`, process
-groups) runs with the suite. Not tested: Lean on Linux, and macOS.
+3.12.13 (version 0.4.0 in progress, 2026-11-25): `--self-check` passes and the test suite gives 1,045
+passed and 7 skipped (Lean, `pyarrow` and the dataset mirror not installed). On Linux the memory
+limit of the computing process is `RLIMIT_AS`: `/proc/<pid>/limits` of a worker shows 1,073,741,824
+bytes for `memory_mb = 1024`, and a 12.8 GB array is refused. Not tested: Lean on Linux, and macOS.
 
 ### Common problems
 

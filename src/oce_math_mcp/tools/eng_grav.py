@@ -270,7 +270,8 @@ def _rotating(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     g_grav = mu / big_r**2
     a_c = omega * omega * big_r * math.cos(t)
     g_radial = g_grav - a_c * math.cos(t)
-    g_tang = a_c * math.sin(t)
+    # towards the equator in both hemispheres (D89): the sign of sin(lat) only says which way that is
+    g_tang = a_c * abs(math.sin(t))
     out = {
         "omega": omega,
         "g_grav": g_grav,
@@ -282,11 +283,12 @@ def _rotating(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     }
     ctx.formula = (
         "g_eff = G M / R^2 (towards the centre) + omega^2 R cos(lat) (away from the axis); radial part "
-        "G M / R^2 - omega^2 R cos^2(lat), part towards the equator omega^2 R cos(lat) sin(lat)"
+        "G M / R^2 - omega^2 R cos^2(lat), part towards the equator omega^2 R cos(lat) |sin(lat)| (>= 0 in both "
+        "hemispheres)"
     )
     ctx.formatted = (
         f"Effective gravity at latitude {fmt_sig(lat, 6)} deg: {fmt_sig(out['g_eff'], 7)} m/s2 "
-        f"(plumb line {fmt_sig(out['deflection_deg'], 4)} deg from the radial direction)."
+        f"(plumb line {fmt_sig(out['deflection_deg'], 4)} deg from the radial direction, towards the equator)."
     )
     return out
 

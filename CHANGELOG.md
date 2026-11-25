@@ -29,6 +29,15 @@ pages), one group at a time.
   `tests/test_gravitation_d88.py` against numpy sums, the gradient of the potential, the shell theorem
   integrated from rings with mpmath, Gauss's flux through a cube with scipy, numpy vectors in the rotating frame
   and page values. Mutation check: 39 changed formulas out of 39 caught.
+- Review of D87-D88 (D89, spec 4.12.1): `gravitation.rotating_body` gives `g_tangential` and `deflection_deg`
+  towards the equator as values >= 0 in both hemispheres (they had the sign of the latitude, while the spec
+  said "towards the equator"). The ideal-gas table of the page (section Kinetic theory) is now checked row by
+  row in `tests/test_ideal_gas_table_d89.py` (5 tests); the page's adiabatic cell equates the work done by the
+  gas with the work done on it (opposite signs): the server follows C_V (T2 - T1) for the work on the gas.
+  `CITATION.cff` describes the last released version (0.3.0); a test reads it from the CHANGELOG. Linux tested
+  again on the code of 0.4.0 in progress: 1,045 passed, 7 skipped in 58.30 s, self-check
+  7.83 s; `RLIMIT_AS` read from `/proc/<pid>/limits` of a worker (1,073,741,824 bytes for memory_mb = 1024). Mutation check: 7 changed
+  lines out of 7 caught.
 - Linux tested (Ubuntu 22.04, x86_64, Python 3.12.13, uv 0.11.20): `--self-check` ok in 8.65 s; suite
   1,026 passed and 7 skipped in 44.91 s. macOS is not tested.
 

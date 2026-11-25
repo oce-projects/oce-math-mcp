@@ -148,17 +148,19 @@ def test_ring_on_axis() -> None:
 def test_rotating_body_against_vectors() -> None:
     gm, radius, omega = 3.986004418e14, 6.371e6, 7.2921159e-5
     w = np.array([0.0, 0.0, omega])
-    for lat in (0.0, 30.0, 45.0, 60.0, 90.0):
+    for lat in (0.0, 30.0, 45.0, 60.0, 90.0, -30.0, -60.0, -90.0):
         t = math.radians(lat)
         r_vec = radius * np.array([math.cos(t), 0.0, math.sin(t)])
         g_vec = -gm / radius**3 * r_vec - np.cross(w, np.cross(w, r_vec))
         up = r_vec / radius
         north = np.array([-math.sin(t), 0.0, math.cos(t)])
+        to_equator = -north if lat >= 0 else north  # along the meridian, towards the equator
         res = grav(mode="rotating_body", mu=gm, R=radius, omega=omega, latitude_deg=lat)
         assert close(res["g_eff"], np.linalg.norm(g_vec))
         assert close(res["g_radial"], -g_vec @ up)
-        assert math.isclose(res["g_tangential"], -g_vec @ north, rel_tol=1e-9, abs_tol=1e-15)
-        ang = math.degrees(math.atan2(-g_vec @ north, -g_vec @ up))
+        assert math.isclose(res["g_tangential"], g_vec @ to_equator, rel_tol=1e-9, abs_tol=1e-15)
+        assert res["g_tangential"] >= 0 and res["deflection_deg"] >= 0
+        ang = math.degrees(math.atan2(g_vec @ to_equator, -g_vec @ up))
         assert math.isclose(res["deflection_deg"], ang, rel_tol=1e-9, abs_tol=1e-12)
     eq = grav(mode="rotating_body", mu=gm, R=radius, omega=omega, latitude_deg=0.0)
     assert close(eq["g_eff"], gm / radius**2 - omega**2 * radius)

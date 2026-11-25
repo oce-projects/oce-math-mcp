@@ -62,9 +62,19 @@ def test_guides_use_the_same_clone_command() -> None:
         assert CLONE in _text(name), name
 
 
-def test_citation_follows_version() -> None:
-    version = _text("VERSION").strip()
-    assert f'version: "{version}"' in _text("CITATION.cff"), version
+def test_citation_follows_the_last_release() -> None:
+    # CITATION.cff describes a released version (D89): the first CHANGELOG entry that is not "in progress"
+    released = [
+        h
+        for h in re.findall(r"^## (\S+ - \S+.*)$", _text("CHANGELOG.md"), re.M)
+        if "in progress" not in h
+    ]
+    version, date = released[0].split(" - ")[:2]
+    cff = _text("CITATION.cff")
+    assert f'version: "{version}"' in cff and f'date-released: "{date}"' in cff, (version, date)
+    current = _text("VERSION").strip()
+    top = re.findall(r"^## (\S+) - ", _text("CHANGELOG.md"), re.M)[0]
+    assert top == current, (top, current)
 
 
 def test_issue_form_lists_the_real_tools() -> None:
