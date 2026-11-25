@@ -26,7 +26,7 @@ import scipy.constants as _sc
 
 from ..envelope import Ctx
 from ..errors import ToolError
-from .eng_base import choice, fmt_sig, integer, need, only, op, qty, units_for
+from .eng_base import acosh1p, choice, fmt_sig, integer, log_ratio, need, only, op, qty, units_for
 
 MU0 = float(_sc.mu_0)
 
@@ -267,7 +267,7 @@ def _inductance(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         )
         if b <= a:
             raise ToolError("INVALID_ARGUMENT", "r_outer must be greater than r_inner.")
-        ind = mu * turns**2 * h * math.log(b / a) / (2 * math.pi)
+        ind = mu * turns**2 * h * log_ratio(b, a) / (2 * math.pi)
         ctx.formula = (
             "L = N Phi / I with B = mu N I / (2 pi r) integrated over the rectangular cross-section: "
             "L = mu N^2 h ln(r_outer / r_inner) / (2 pi)"
@@ -283,7 +283,7 @@ def _inductance(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
                 "INVALID_ARGUMENT",
                 "Coaxial cable: the inner radius b of the outer conductor must exceed a.",
             )
-        ind = mu / (2 * math.pi) * length * math.log(b / a)
+        ind = mu / (2 * math.pi) * length * log_ratio(b, a)
         ctx.formula = "L = mu / (2 pi) l ln(b / a) (high frequency: no flux inside the conductors)"
     elif geo == "straight_wire":
         length, r = need(p, "L", "length"), need(p, "r", "length")
@@ -335,7 +335,8 @@ def _inductance(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
                     "INVALID_ARGUMENT",
                     "With hf = true Y is not needed (current only at the surface).",
                 )
-            ind = MU0 / math.pi * length * math.acosh(s / (2 * a))
+            # acosh(s / (2a)) = acosh(1 + (s - 2a) / (2a)), exact difference for close wires (D82)
+            ind = MU0 / math.pi * length * acosh1p((s - 2 * a) / (2 * a))
             ctx.formula = "high frequency: L = mu0 / pi l arcosh(s / (2a))"
         else:
             ind = MU0 / math.pi * length * (math.log(s / a) + _y(p) / 4)

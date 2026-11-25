@@ -319,7 +319,7 @@ def _diff(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     tz = _tz(args.get("timezone"))
     a, a_time = parse_dt(args.get("date"), "date")
     if not args.get("end_date"):
-        raise ToolError("INVALID_ARGUMENT", "Serve 'end_date'.", '"2026-12-31"')
+        raise ToolError("INVALID_ARGUMENT", "'end_date' is needed.", '"2026-12-31"')
     b, b_time = parse_dt(args["end_date"], "end_date")
     days = (b.date() - a.date()).days
     la, lb = localize(a, tz, ctx), localize(b, tz, ctx)
@@ -392,7 +392,7 @@ def _add(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
 def _weekday_index(name: Any) -> int:
     if name not in WEEKDAYS:
         raise ToolError(
-            "INVALID_ARGUMENT", "Serve 'target_weekday' (monday ... sunday).", '"thursday"'
+            "INVALID_ARGUMENT", "'target_weekday' is needed (monday ... sunday).", '"thursday"'
         )
     return WEEKDAYS.index(name)
 

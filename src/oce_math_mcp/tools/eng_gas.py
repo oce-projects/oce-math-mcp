@@ -7,13 +7,12 @@ gamma = 1.4 and R = 287.05287 J/(kg K) (ISO 2533), the same as in area C.
 
 from __future__ import annotations
 
-import math
 from typing import Any
 
 from ..envelope import Ctx
 from ..errors import ToolError
 from ..fmt import fmt_float
-from .eng_base import choice, need, one_of, only, op, qty, temperature, units_for
+from .eng_base import choice, log_ratio, need, one_of, only, op, qty, temperature, units_for
 from .eng_thermo import GAMMA_AIR, R_AIR
 
 R_U = 8.314462618
@@ -146,11 +145,12 @@ def _process(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     if n is None:
         W = 0.0
     elif n == 1:
-        W, dU = p1 * V1 * math.log(V2 / V1), 0.0
+        # ln(V2 / V1) with log1p: keeps its digits for small changes (D79)
+        W, dU = p1 * V1 * log_ratio(V2, V1), 0.0
     else:
         W = (p2 * V2 - p1 * V1) / (1 - n)
     Q = 0.0 if proc == "isentropic" else dU + W
-    dS = 0.0 if proc == "isentropic" else m * (cv * math.log(T2 / T1) + R * math.log(V2 / V1))
+    dS = 0.0 if proc == "isentropic" else m * (cv * log_ratio(T2, T1) + R * log_ratio(V2, V1))
     dH = 0.0 if n == 1 else m * cp * (T2 - T1)
     ctx.formula = (
         "p V^n = const (n = 1 isothermal, 0 isobaric, gamma isentropic, infinity isochoric); "

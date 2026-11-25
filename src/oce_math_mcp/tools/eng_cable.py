@@ -15,13 +15,14 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable
+from fractions import Fraction
 from typing import Any, cast
 
 from scipy.optimize import brentq
 
 from ..envelope import Ctx
 from ..errors import ToolError
-from .eng_base import choice, fmt_sig, need, only, op, units_for
+from .eng_base import acosh1p, choice, fmt_sig, need, only, op, units_for
 
 _CAT_MODES: dict[str, set[str]] = {
     "span_length": {"w", "H", "L", "v"},
@@ -39,6 +40,17 @@ _CAT_UNITS = {
     "y_supports": "m",
     "angle_support_deg": "deg",
 }
+
+
+def _sinhc_m1(u: float) -> float:
+    """sinh(u) / u - 1 for u > 0, by its series for small u: no cancellation for a taut cable (D82)."""
+    if u > 0.5:
+        return math.sinh(u) / u - 1
+    q = u * u
+    s = 0.0
+    for k in (272, 210, 156, 110, 72, 42, 20):  # (2k + 2)(2k + 3), innermost term first
+        s = q / k * (1 + s)
+    return q / 6 * (1 + s)
 
 
 def _root(f: Callable[[float], float], lo: float, hi: float) -> float:
@@ -70,16 +82,21 @@ def _catenary(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
                 "INVALID_ARGUMENT",
                 "The height difference |v| must be smaller than the cable length L.",
             )
-        if length * length - v * v <= span * span:
+        # sqrt(L^2 - v^2) - H with L^2 - v^2 - H^2 in exact rationals: the taut cable keeps its digits (D82)
+        gap = Fraction(length) ** 2 - Fraction(v) ** 2 - Fraction(span) ** 2
+        if gap <= 0:
             raise ToolError(
                 "INVALID_ARGUMENT",
                 "Cable too short: sqrt(L^2 - v^2) > H is needed (for supports at the same height L > H).",
             )
-        target = math.sqrt(length * length - v * v)
+        # sqrt(L - v) sqrt(L + v) and the excess as one exact quotient: no overflow or underflow of L^2 (D84)
+        target = math.sqrt(length - v) * math.sqrt(length + v)
+        excess = float(gap / (Fraction(target) + Fraction(span)))
 
         # 2 a sinh(H / (2a)) decreases from infinity to H as a grows
+        # written as H (sinh(u)/u - 1) - excess with u = H / (2a): no cancellation for a taut cable (D82)
         def f_len(a: float) -> float:
-            return 2 * a * math.sinh(span / (2 * a)) - target
+            return span * _sinhc_m1(span / (2 * a)) - excess
 
         a = _bracket(f_len, span / 700, span)  # a = H/700: sinh(350) is still finite
         ctx.formula = (
@@ -89,7 +106,8 @@ def _catenary(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         sag = need(p, "sag", "length")
 
         def f_sag(a: float) -> float:
-            return 2 * a * math.acosh((sag + a) / a) - span
+            # acosh((h + a) / a) without rounding 1 + h/a (D82)
+            return 2 * a * acosh1p(sag / a) - span
 
         a = _bracket(f_sag, sag * 1e-12, span)
         ctx.formula = (
@@ -102,14 +120,17 @@ def _catenary(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     mid = a * math.asinh(v / (2 * a * sh))  # (x1 + x2) / 2
     x1, x2 = mid - span / 2, mid + span / 2
     y1, y2 = a * math.cosh(x1 / a), a * math.cosh(x2 / a)
-    length_out = a * (math.sinh(x2 / a) - math.sinh(x1 / a))
+    # heights over the vertex a (cosh(x/a) - 1) = 2 a sinh^2(x/(2a)) and length 2 a cosh(mid/a) sinh(H/(2a)):
+    # no cancellation when a is large (taut cable, D82)
+    h1, h2 = 2 * a * math.sinh(x1 / (2 * a)) ** 2, 2 * a * math.sinh(x2 / (2 * a)) ** 2
+    length_out = 2 * a * math.cosh(mid / a) * sh
     t1, t2 = w * y1, w * y2
     out: dict[str, Any] = {
         "a": a,
         "T0": w * a,
         "L": length_out,
         "x_supports": [x1, x2],
-        "y_supports": [y1 - a, y2 - a],
+        "y_supports": [h1, h2],
         "T_supports": [t1, t2],
         "T_max": max(t1, t2),
         "angle_support_deg": [
@@ -118,9 +139,9 @@ def _catenary(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         ],
     }
     if v == 0:
-        out["sag"] = y1 - a
+        out["sag"] = h1
     else:
-        out["sag"] = min(y1, y2) - a
+        out["sag"] = min(h1, h2)
         if x1 > 0 or x2 < 0:
             ctx.warn(
                 "The vertex of the catenary falls outside the span: the cable rises from one support to the other."

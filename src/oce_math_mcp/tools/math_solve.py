@@ -1233,7 +1233,7 @@ def _matrix(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     elif mop == "multiply":
         if B is None:
             raise ToolError(
-                "INVALID_ARGUMENT", "Per 'multiply' serve matrix_b.", "[[1, 0], [0, 1]]"
+                "INVALID_ARGUMENT", "With 'multiply' matrix_b is needed.", "[[1, 0], [0, 1]]"
             )
         out.update(matrix=mat_str(A * B), verified=True)
     out["verified"] = bool(out.get("verified", False))

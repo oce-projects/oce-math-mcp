@@ -28,6 +28,7 @@ N |m| (Rayleigh criterion on the N-slit pattern; phasor sum).
 from __future__ import annotations
 
 import math
+from fractions import Fraction
 from typing import Any
 
 from scipy.special import jn_zeros
@@ -160,7 +161,13 @@ def _lensmaker(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     if nr == 1:
         raise ToolError("INVALID_ARGUMENT", "n equals n_medium: the lens does not refract.")
     k = (nr - 1) * d / nr
-    power = (nr - 1) * (c1 - c2 + k * c1 * c2)
+    dc = c1 - c2
+    if p.get("R1") is not None and p.get("R2") is not None:
+        # 1/R1 - 1/R2 = (R2 - R1) / (R1 R2): exact difference for a meniscus (D82); two divisions, no
+        # product R1 R2 that overflows or underflows (D84)
+        r1, r2 = _signed(p, "R1"), _signed(p, "R2")
+        dc = (r2 - r1) / r1 / r2
+    power = (nr - 1) * (dc + k * c1 * c2)
     ctx.formula = "1/f = (n-1) [1/R1 - 1/R2 + (n-1) d / (n R1 R2)] (thick lens, paraxial)"
     if n_m != 1:
         ctx.formula += "; n -> n / n_medium (same medium on both sides)"
@@ -207,15 +214,19 @@ def _mirror(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     ctx.formula = "1/d_o + 1/d_i = 1/f; f = R/2; m = -d_i/d_o (real is positive, concave f > 0)"
     if f is None:
         assert d_o is not None and d_i is not None
-        inv = 1 / d_o + 1 / d_i
-        if inv == 0:
+        # 1/d_o + 1/d_i = (d_o + d_i) / (d_o d_i): exact sum when d_i is close to -d_o (D82)
+        s = d_o + d_i
+        if s == 0:
             raise ToolError("INVALID_ARGUMENT", "1/d_o + 1/d_i = 0: plane mirror, no focal length.")
-        f = 1 / inv
+        big, small = sorted((d_o, d_i), key=abs, reverse=True)
+        f = small * (big / s)  # a ratio, then one product: no overflow of d_o d_i (D84)
     elif d_i is None:
         assert d_o is not None
-        d_i = _conjugate(1 / f - 1 / d_o, ctx)
+        # 1/f - 1/d_o = (d_o - f) / (f d_o): exact difference near the focus (D80)
+        # divided in two steps: no overflow of f d_o for a far object (D84)
+        d_i = _conjugate((d_o - f) / d_o / f, ctx)
     else:
-        d_o = _conjugate(1 / f - 1 / d_i, ctx)
+        d_o = _conjugate((d_i - f) / d_i / f, ctx)
     out: dict[str, Any] = {"f": f, "R": 2 * f, "d_o": d_o, "d_i": d_i, "magnification": None}
     if d_o is not None and d_i is not None:
         out["magnification"] = -d_i / d_o
@@ -228,6 +239,14 @@ def _mirror(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         text += f", magnification {fmt_sig(out['magnification'], 5)}"
     ctx.formatted = text + "."
     return out
+
+
+def _to_float(q: Fraction) -> float:
+    """Correctly rounded float of an exact rational, +-inf beyond the float range (D84)."""
+    try:
+        return float(q)
+    except OverflowError:
+        return math.inf if q > 0 else -math.inf
 
 
 def _conjugate(inv: float, ctx: Ctx) -> float | None:
@@ -248,12 +267,19 @@ def _surface(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         "n1/d_o + n2/d_i = (n2 - n1)/R; f_object = n1 R/(n2 - n1); f_image = n2 R/(n2 - n1)"
     )
     ctx.formula += "; m = -(n1 d_i)/(n2 d_o)"
+    # (n2 - n1)/R - n1/d_o = ((n2 - n1) d_o - n1 R) / (R d_o), with the numerator in exact rationals: no
+    # cancellation near the focus (D82); the same for d_i
+    dn = Fraction(n2) - Fraction(n1)
     if key == "d_o":
-        d_o: float | None = _signed(p, "d_o")
-        d_i = _conjugate((power - n1 / d_o) / n2, ctx)
+        x = _signed(p, "d_o")
+        d_o: float | None = x
+        num = dn * Fraction(x) - Fraction(n1) * Fraction(r)
+        d_i = _conjugate(_to_float(num / (Fraction(n2) * Fraction(r) * Fraction(x))), ctx)
     else:
-        d_i = _signed(p, "d_i")
-        d_o = _conjugate((power - n2 / d_i) / n1, ctx)
+        y = _signed(p, "d_i")
+        d_i = y
+        num = dn * Fraction(y) - Fraction(n2) * Fraction(r)
+        d_o = _conjugate(_to_float(num / (Fraction(n1) * Fraction(r) * Fraction(y))), ctx)
     out: dict[str, Any] = {
         "P": power,
         "f_object": n1 / power,

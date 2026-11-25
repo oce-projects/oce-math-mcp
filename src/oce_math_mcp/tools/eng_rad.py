@@ -21,7 +21,7 @@ import numpy as np
 
 from ..envelope import Ctx
 from ..errors import ToolError
-from .eng_base import choice, fmt_sig, integer, need, only, op, temperature, units_for
+from .eng_base import choice, fmt_sig, integer, need, only, op, pow4_diff, temperature, units_for
 from .eng_thermo import SIGMA_SB
 
 _VF_GEOMETRIES: dict[str, set[str]] = {
@@ -140,7 +140,7 @@ def _two_surface(cfg: str, p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     t1, t2 = temperature(p, "T1"), temperature(p, "T2")
     assert t1 is not None and t2 is not None
     e1, e2 = _eps(p, "eps1"), _eps(p, "eps2")
-    dt4 = SIGMA_SB * (t1**4 - t2**4)
+    dt4 = SIGMA_SB * pow4_diff(t1, t2)  # T1^4 - T2^4 without cancellation (D80)
     if cfg == "parallel_plates":
         area = need(p, "A", "area")
         n = integer(p, "n_shields", minimum=0) if p.get("n_shields") is not None else 0

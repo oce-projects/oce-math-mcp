@@ -12,7 +12,18 @@ from typing import Any, cast
 from ..envelope import Ctx
 from ..errors import ToolError
 from ..fmt import fmt_float
-from .eng_base import choice, need, one_of, only, op, qty, temperature, units_for
+from .eng_base import (
+    choice,
+    log_ratio,
+    need,
+    one_of,
+    only,
+    op,
+    pow4_diff,
+    qty,
+    temperature,
+    units_for,
+)
 
 G0 = 9.80665
 SIGMA_SB = 5.670374419e-8
@@ -261,7 +272,8 @@ def _cylinder(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     if r2 <= r1:
         raise ToolError("INVALID_ARGUMENT", "params.r2 (outer radius) must be greater than r1.")
     k, L = need(p, "k", "thermal_conductivity"), need(p, "L", "length")
-    R = math.log(r2 / r1) / (2 * math.pi * k * L)
+    # ln(r2 / r1) with log1p: keeps its digits for a thin wall (D79)
+    R = log_ratio(r2, r1) / (2 * math.pi * k * L)
     h_in, h_out = (
         qty(p, "h_in", "heat_transfer_coefficient", need=False),
         qty(p, "h_out", "heat_transfer_coefficient", need=False),
@@ -289,7 +301,8 @@ def _radiation(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     A = need(p, "A", "area")
     T1, T2 = _temps(p)
     ctx.formula = "Q = eps sigma A (T1^4 - T2^4), sigma = 5.670374419e-8 W/(m2 K4); small surface in large surroundings"
-    return {"Q": eps * SIGMA_SB * A * (T1**4 - T2**4), "q": eps * SIGMA_SB * (T1**4 - T2**4)}
+    d4 = pow4_diff(T1, T2)  # T1^4 - T2^4 without cancellation for a small difference (D80)
+    return {"Q": eps * SIGMA_SB * A * d4, "q": eps * SIGMA_SB * d4}
 
 
 def _lmtd(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
@@ -306,7 +319,8 @@ def _lmtd(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
             "INVALID_ARGUMENT",
             "Impossible temperatures for this exchanger (differences <= 0 at one end).",
         )
-    lm = d1 if math.isclose(d1, d2, rel_tol=1e-12) else (d1 - d2) / math.log(d1 / d2)
+    # ln(d1 / d2) with log1p: the LMTD keeps its digits when d1 is close to d2 (balanced exchanger, D79)
+    lm = d1 if d1 == d2 else (d1 - d2) / log_ratio(d1, d2)
     U = need(p, "U", "heat_transfer_coefficient")
     out: dict[str, Any] = {"LMTD": lm}
     if one_of(p, ("Q", "A"), "the heat rate (Q) or the area (A)") == "Q":

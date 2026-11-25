@@ -390,3 +390,36 @@ def temperature(p: dict[str, Any], key: str, *, need: bool = True) -> float | No
     if t <= 0:
         raise ToolError("INVALID_ARGUMENT", f"params.{key}: temperature below absolute zero.")
     return t
+
+
+def log_ratio(a: float, b: float) -> float:
+    """ln(a / b) for a, b > 0 without the rounding of a / b when a is close to b (D79).
+
+    For b / 2 <= a <= 2 b the difference a - b is exact (Sterbenz), so log1p((a - b) / b) keeps all the digits
+    that log(a / b) loses: with a / b = 1 + 1e-9 the plain form is right to about 7 digits only.
+    """
+    if 0.5 * b <= a <= 2 * b:
+        return math.log1p((a - b) / b)
+    return math.log(a / b)
+
+
+def sq_diff(a: float, b: float) -> float:
+    """a^2 - b^2 as (a - b)(a + b): no cancellation for close a and b, where a - b is exact (D80)."""
+    return (a - b) * (a + b)
+
+
+def pow4_diff(a: float, b: float) -> float:
+    """a^4 - b^4 as (a - b)(a + b)(a^2 + b^2), without cancellation for close a and b (D80)."""
+    return (a - b) * (a + b) * (a * a + b * b)
+
+
+def cube_diff(a: float, b: float) -> float:
+    """a^3 - b^3 as (a - b)(a^2 + ab + b^2), without cancellation for close a and b (D84)."""
+    return (a - b) * (a * a + a * b + b * b)
+
+
+def acosh1p(y: float) -> float:
+    """acosh(1 + y) for y >= 0 as log1p(y + sqrt(y (y + 2))): no rounding of 1 + y when y is small (D82)."""
+    if y < 1:
+        return math.log1p(y + math.sqrt(y * (y + 2)))
+    return math.acosh(1 + y)

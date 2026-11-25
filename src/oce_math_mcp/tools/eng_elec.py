@@ -537,14 +537,28 @@ def _optics(p: dict[str, Any], mode: str, ctx: Ctx) -> dict[str, Any]:
         }
         if len(g) != 2:
             raise ToolError("INVALID_ARGUMENT", "Thin lens: exactly 2 of f, d_o, d_i are needed.")
+        for k in ("f", "d_i"):
+            if g.get(k) == 0:
+                raise ToolError("INVALID_ARGUMENT", f"params.{k} must not be 0.")
+        # 1/d_o + 1/d_i and 1/f - 1/x as one sum or difference over a product: exact near the focus and
+        # with d_i close to -d_o (D82); a ratio first, then one product: no overflow or underflow of the
+        # product of two lengths (D84)
         if "f" not in g:
-            g["f"] = 1 / (1 / g["d_o"] + 1 / g["d_i"])
+            s = g["d_o"] + g["d_i"]
+            if s == 0:
+                raise ToolError(
+                    "MATH_ERROR", "1/d_o + 1/d_i = 0: the lens has no power, no focal length."
+                )
+            big, small = sorted((g["d_o"], g["d_i"]), key=abs, reverse=True)
+            g["f"] = small * (big / s)
         elif "d_i" not in g:
             if g["d_o"] == g["f"]:
                 raise ToolError("MATH_ERROR", "Object at the focus: image at infinity.")
-            g["d_i"] = 1 / (1 / g["f"] - 1 / g["d_o"])
+            g["d_i"] = g["f"] * (g["d_o"] / (g["d_o"] - g["f"]))
         else:
-            g["d_o"] = 1 / (1 / g["f"] - 1 / g["d_i"])
+            if g["d_i"] == g["f"]:
+                raise ToolError("MATH_ERROR", "Image at the focus: object at infinity.")
+            g["d_o"] = g["f"] * (g["d_i"] / (g["d_i"] - g["f"]))
         ctx.formula = "1/f = 1/d_o + 1/d_i (real is positive); magnification m = -d_i / d_o"
         return {
             "f": g["f"],

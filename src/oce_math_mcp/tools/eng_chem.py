@@ -25,7 +25,18 @@ from ..constants import lookup
 from ..envelope import Ctx
 from ..errors import ToolError
 from ..fmt import fmt_float
-from .eng_base import choice, integer, need, one_of, only, op, qty, temperature, units_for
+from .eng_base import (
+    choice,
+    integer,
+    log_ratio,
+    need,
+    one_of,
+    only,
+    op,
+    qty,
+    temperature,
+    units_for,
+)
 
 _DATA = Path(__file__).resolve().parents[1] / "data" / "atomic_weights.json"
 R_GAS = lookup("R")[1]
@@ -510,7 +521,8 @@ def _kinetics(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
             k1, k2 = need(p, "k1", None), need(p, "k2", None)
             if T1 == T2:
                 raise ToolError("INVALID_ARGUMENT", "T1 and T2 must be different.")
-            Ea = R_GAS * math.log(k2 / k1) / (1 / T1 - 1 / T2)
+            # 1/T1 - 1/T2 = (T2 - T1) / (T1 T2) and ln(k2 / k1) with log1p: no cancellation (D79)
+            Ea = R_GAS * log_ratio(k2, k1) * T1 * T2 / (T2 - T1)
             out = {"Ea": Ea, "A": k1 * math.exp(Ea / (R_GAS * T1))}
             ctx.formula = "Ea = R ln(k2 / k1) / (1/T1 - 1/T2); A = k1 exp(Ea / (R T1))"
         elif have == {"k1", "T1", "Ea", "T2"}:

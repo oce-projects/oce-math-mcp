@@ -14,7 +14,7 @@ from scipy.optimize import minimize_scalar
 from ..envelope import Ctx
 from ..errors import ToolError
 from ..fmt import fmt_float
-from .eng_base import choice, mm, mpa, need, one_of, only, op, qty, temperature, units_for
+from .eng_base import choice, mm, mpa, need, one_of, only, op, qty, sq_diff, temperature, units_for
 
 _STRESS = "Pa"
 
@@ -170,7 +170,13 @@ def _hertz(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     nu2 = nu1 if same else _poisson(p, "nu2")
     assert nu2 is not None
     Es = 1 / ((1 - nu1**2) / E1 + (1 - nu2**2) / E2)
-    R = 1 / (1 / R1 + (0.0 if R2 is None else 1 / R2))
+    # 1/R = 1/R1 + 1/R2 as R = R1 R2 / (R1 + R2): exact sum for a seat close to conforming (D83); the
+    # larger radius divided first, then one product: no overflow of R1 R2 (D84)
+    if R2 is None:
+        R = R1
+    else:
+        big, small = sorted((R1, R2), key=abs, reverse=True)
+        R = small * (big / (R1 + R2))
     out: dict[str, Any] = {"R": R, "E_star": Es}
     base = [
         "1/E* = (1 - nu1^2)/E1 + (1 - nu2^2)/E2",
@@ -344,7 +350,7 @@ def _fit(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     Do = need(p, "D_o", "length")
     di = qty(p, "d_i", "length", need=False, positive=False) or 0.0
     if not 0 <= di < d < Do:
-        raise ToolError("INVALID_ARGUMENT", "Serve 0 <= d_i < d < D_o.")
+        raise ToolError("INVALID_ARGUMENT", "0 <= d_i < d < D_o is needed.")
     delta = need(p, "delta", "length")
     Eh = need(p, "E_hub", "pressure")
     nh = _poisson(p, "nu_hub")
@@ -357,8 +363,8 @@ def _fit(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     Es = Eh if p.get("E_shaft") is None else need(p, "E_shaft", "pressure")
     ns = nh if p.get("nu_shaft") is None else _poisson(p, "nu_shaft")
     assert ns is not None
-    kh = (Do**2 + d**2) / (Do**2 - d**2)
-    ks = (d**2 + di**2) / (d**2 - di**2)
+    kh = (Do**2 + d**2) / sq_diff(Do, d)
+    ks = (d**2 + di**2) / sq_diff(d, di)
     pc = delta / (d * ((kh + nh) / Eh + (ks - ns) / Es))
     st_h = pc * kh
     out: dict[str, Any] = {
@@ -377,7 +383,7 @@ def _fit(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         "sigma_vm_hub = sqrt(sigma_t^2 - sigma_t sigma_r + sigma_r^2) at the hub bore",
     ]
     if di > 0:
-        out["sigma_t_shaft_inner"] = -2 * pc * d**2 / (d**2 - di**2)
+        out["sigma_t_shaft_inner"] = -2 * pc * d**2 / sq_diff(d, di)
         formulas.append("sigma_t at the bore of the hollow shaft = -2 p d^2 / (d^2 - d_i^2)")
     if (p.get("mu") is None) != (p.get("L") is None):
         raise ToolError("INVALID_ARGUMENT", "Torque and axial force need mu and L together.")

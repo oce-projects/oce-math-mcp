@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from decimal import ROUND_HALF_UP, Decimal, localcontext
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation, localcontext
 from typing import Any
 
 import sympy as sp
@@ -31,9 +31,12 @@ def en_number(text: str) -> str:
 
 
 def fmt_float(value: float, digits: int = 6) -> str:
-    return en_number(
-        dec_str(Decimal(repr(value)).quantize(Decimal(1).scaleb(-digits), ROUND_HALF_UP))
-    )
+    try:
+        d = Decimal(repr(value)).quantize(Decimal(1).scaleb(-digits), ROUND_HALF_UP)
+    except InvalidOperation:
+        # beyond the 28 digits of the Decimal context (from about 1e22), or infinite: scientific notation (D84)
+        return f"{value:.6g}"
+    return en_number(dec_str(d))
 
 
 def dec_str(d: Decimal) -> str:

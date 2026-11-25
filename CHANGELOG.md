@@ -180,6 +180,49 @@ The whole repository in English, ready for publication.
   shift), z from a difference of the given values, z = 2 beta / ((1 - beta)(r + 1)) and sqrt((1 - zeta)(1 + zeta)):
   all within 3.6e-15 (Mp within 1.6e-14, where its exponent of about 222 multiplies the rounding). 5 tests in
   `tests/test_cancellation_d78.py`; mutation check 18 out of 18.
+- Logarithm of a ratio close to 1 (D79): `log_ratio(a, b)` in `eng_base` gives ln(a / b) as log1p((a - b) / b) when
+  b / 2 <= a <= 2 b, where a - b is exact; ln(a / b) loses the digits of the rounding of a / b. Measured against
+  mpmath: LMTD with d1 / d2 = 1 + 1e-11 1.1e-5 (a balanced counterflow exchanger), coaxial capacitor with a gap of
+  1e-9 8.7e-8, Arrhenius Ea from temperatures 1e-9 apart 4.8e-8, cylindrical wall, toroid, coaxial inductance and
+  isothermal work with a ratio 1 + 1e-6 2.8e-11. Also 1/T1 - 1/T2 = (T2 - T1) / (T1 T2) in the two-point fits
+  (Arrhenius, thermistor B) and in the capacitance of concentric spheres; the LMTD branch for equal differences
+  only for d1 == d2 (before: within 1e-12, an approximation). After: all within 5e-15. 5 tests in
+  `tests/test_cancellation_d79.py`; mutation check 15 out of 15.
+- Differences of powers and of reciprocals (D80): `sq_diff(a, b)` = (a - b)(a + b) and `pow4_diff(a, b)` =
+  (a - b)(a + b)(a^2 + b^2) in `eng_base`. Measured against mpmath: radiation with T1 = T2 (1 + 1e-9) 1.0e-8 (also
+  between parallel plates), eccentric cylinders almost touching 1.5e-9 (acosh close to 1, now log1p of an exact
+  difference), mirror with the object 1e-8 f beyond the focus 4.5e-9 (1/f - 1/d_o, now (d_o - f) / (f d_o)), thick
+  cylinder with t = 1e-6 r_i 4.4e-11, hollow shaft and annulus with d_i = d (1 - 1e-6) 2.1e-11; the interference fit
+  uses the same differences. After: all within 4.1e-15. 5 tests in `tests/test_cancellation_d80.py`; mutation
+  check 16 out of 16.
+- Italian left in five error messages (D81): "Serve ..." and "Per 'multiply' serve matrix_b." in `date_calc`,
+  `eng_solid`, `geom3d_calc` and `math_solve`, now in English. The vocabulary check of D61 could not see them,
+  because "serve" and "per" are English words too; `tests/test_english_messages.py` reads every string literal
+  of the package and fails on such Italian verbs and phrases.
+- Lenses, refracting surface, close wires and taut cables (D82). Measured against mpmath, case 1e-8: thin lens
+  near the focus and mirror or lens with d_i close to -d_o 4.5e-9 (now f d_o / (d_o - f) and d_o d_i / (d_o +
+  d_i)); thin meniscus with R2 = R1 (1 + 1e-8) 4.5e-9 (now (R2 - R1) / (R1 R2)); refracting surface with the
+  object near the focus 5.2e-9 (the numerator (n2 - n1) d_o - n1 R now in exact rationals); two wires, wire and
+  wall, two-wire line almost touching 1.0e-9 (new `acosh1p(y)` = acosh(1 + y) in `eng_base`); catenary from the
+  tension with a = 1e4 H 7.1e-8 in the sag (now 2 a sinh^2(x/(2a))), taut cable with L = H (1 + 1e-8) 4.8e-9 in
+  a (the length equation now H (sinh(u)/u - 1) = sqrt(L^2 - v^2) - H, with a series for small u and L^2 - v^2 -
+  H^2 in exact rationals), sag of 1e-6 m on a span of 100 m 9.6e-2 in a (acosh of 1 + h/a). After: all within
+  4.1e-15. The thin lens now answers d_i = f and d_i = -d_o with a clear message instead of "ZeroDivisionError:
+  float division by zero". 9 tests in `tests/test_cancellation_d82.py`; mutation check 20 out of 20.
+- Hertz contact in a concave seat close to conforming (D83): 1/R = 1/R1 + 1/R2 lost digits with R2 = -R1 (1 +
+  1e-8), 2.7e-9 in R (5.0e-5 with 1e-12); now R = R1 R2 / (R1 + R2), within 1e-13. A last sweep found nothing
+  else: the exploration with two parameters tied (equal, opposite, double, half) over 211 modes gave only the
+  absurd inputs already accepted in D74 and D75. 1 test in `tests/test_cancellation_d83.py`; mutation check 2
+  out of 2.
+- Extreme ranges after D79-D83 (D84), found by an independent review: products of two lengths (f d_o, R1 R2,
+  n2 R d_o, L^2) overflowed or underflowed where the old reciprocals did not. A mirror with d_o = 1e308 (infinity
+  written as a number) answered "at the focus", a thin lens with f = 1e-200 answered d_i = 0, a meniscus with
+  radii of 1e160 was "afocal"; now a ratio first and one product, or an exact rational quotient. The thin lens
+  refuses f = 0 and d_i = 0. Lame's sigma_r at the walls is now the pressure itself (it lost up to 3e-11 for a
+  thin wall), and the thick sphere uses r_o^3 - r_i^3 = (r_o - r_i)(r_o^2 + r_o r_i + r_i^2) (8.6e-12 before).
+  `fmt_float` raised decimal.InvalidOperation from 1e22 on (28 digits of the Decimal context), so ten operations
+  answered "InvalidOperation" for large finite results (bearing life with P = 1e-9 N, for one); now scientific
+  notation there, the same text below. 9 tests in `tests/test_extreme_ranges_d84.py`; mutation check 20 out of 20.
 
 ## 0.2.0 - 2026-11-24
 

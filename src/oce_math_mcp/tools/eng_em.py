@@ -18,7 +18,7 @@ import scipy.constants as _sc
 
 from ..envelope import Ctx
 from ..errors import ToolError
-from .eng_base import choice, fmt_sig, need, only, op, qty, units_for
+from .eng_base import acosh1p, choice, fmt_sig, log_ratio, need, only, op, qty, units_for
 
 EPS0 = float(_sc.epsilon_0)
 K_E = 1 / (4 * math.pi * EPS0)
@@ -167,12 +167,13 @@ def _capacitor(geo: str, p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         if ri >= ro:
             raise ToolError("INVALID_ARGUMENT", "R_outer must be greater than R_inner.")
         if geo == "concentric_spheres":
-            c = 4 * math.pi * eps / (1 / ri - 1 / ro)
+            # 1/ri - 1/ro = (ro - ri) / (ri ro), without cancellation (D79)
+            c = 4 * math.pi * eps * ri * ro / (ro - ri)
             ctx.formula = "C = 4 pi eps / (1/R_inner - 1/R_outer)"
         else:
             length = need(p, "L", "length")
             if geo == "coaxial":
-                c = 2 * math.pi * eps * length / math.log(ro / ri)
+                c = 2 * math.pi * eps * length / log_ratio(ro, ri)  # ln(ro / ri), thin gap (D79)
                 ctx.formula = "C = 2 pi eps L / ln(R_outer / R_inner)"
             else:
                 d = need(p, "d", "length", positive=False)
@@ -181,13 +182,11 @@ def _capacitor(geo: str, p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
                         "INVALID_ARGUMENT",
                         "With d >= R_outer - R_inner the inner conductor touches the outer one.",
                     )
-                c = (
-                    2
-                    * math.pi
-                    * eps
-                    * length
-                    / math.acosh((ro * ro + ri * ri - d * d) / (2 * ro * ri))
-                )
+                # acosh(1 + y) = log1p(y + sqrt(y (y + 2))) with y = ((ro - ri)^2 - d^2) / (2 ro ri): no
+                # cancellation when the conductors almost touch (D80)
+                g = ro - ri
+                y = (g - d) * (g + d) / (2 * ro * ri)
+                c = 2 * math.pi * eps * length / acosh1p(y)
                 ctx.formula = (
                     "C = 2 pi eps L / arcosh[(R_outer^2 + R_inner^2 - d^2) / (2 R_outer R_inner)]"
                 )
@@ -203,7 +202,8 @@ def _capacitor(geo: str, p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
                     "INVALID_ARGUMENT",
                     "Parallel wires: the distance d between the axes must exceed 2a.",
                 )
-            c = math.pi * eps * length / math.acosh(d / (2 * a))
+            # acosh(d / (2a)) = acosh(1 + (d - 2a) / (2a)), exact difference for close wires (D82)
+            c = math.pi * eps * length / acosh1p((d - 2 * a) / (2 * a))
             ctx.formula = "C = pi eps L / arcosh(d / (2a))"
         else:
             if d <= a:
@@ -211,7 +211,8 @@ def _capacitor(geo: str, p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
                     "INVALID_ARGUMENT",
                     "Wire and wall: the distance d of the axis must exceed the radius a.",
                 )
-            c = 2 * math.pi * eps * length / math.acosh(d / a)
+            # acosh(d / a) = acosh(1 + (d - a) / a), exact difference close to the wall (D82)
+            c = 2 * math.pi * eps * length / acosh1p((d - a) / a)
             ctx.formula = "C = 2 pi eps L / arcosh(d / a)"
     else:
         radius = need(p, "R", "length")

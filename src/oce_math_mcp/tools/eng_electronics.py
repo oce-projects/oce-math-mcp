@@ -29,7 +29,19 @@ import numpy as np
 
 from ..envelope import Ctx
 from ..errors import ToolError
-from .eng_base import choice, fmt_sig, integer, need, one_of, only, op, qty, temperature, units_for
+from .eng_base import (
+    choice,
+    fmt_sig,
+    integer,
+    log_ratio,
+    need,
+    one_of,
+    only,
+    op,
+    qty,
+    temperature,
+    units_for,
+)
 
 _OPAMP: dict[str, set[str]] = {
     "inverting": {"R_in", "R_f", "V_in", "A", "GBW"},
@@ -370,7 +382,8 @@ def _fit(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         raise ToolError("INVALID_ARGUMENT", "params.points: the temperatures must be different.")
     if len(rows) == 2:
         (t1, r1), (t2, r2) = rows
-        beta = math.log(r1 / r2) / (1 / t1 - 1 / t2)
+        # = ln(R1/R2) / (1/T1 - 1/T2), without cancellation (D79)
+        beta = log_ratio(r1, r2) * t1 * t2 / (t2 - t1)
         ctx.formula = "B = ln(R1/R2) / (1/T1 - 1/T2)"
         ctx.formatted = f"Thermistor: B = {fmt_sig(beta, 6)} K (R0 = {fmt_sig(r1, 6)} ohm at T0 = {fmt_sig(t1, 6)} K)."
         return {"B": beta, "R0": r1, "T0": t1}

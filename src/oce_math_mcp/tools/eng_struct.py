@@ -10,7 +10,19 @@ import numpy as np
 from ..envelope import Ctx
 from ..errors import ToolError
 from ..fmt import fmt_float
-from .eng_base import choice, mm, mpa, need, one_of, op, qty, units_for
+from .eng_base import (
+    choice,
+    cube_diff,
+    mm,
+    mpa,
+    need,
+    one_of,
+    op,
+    pow4_diff,
+    qty,
+    sq_diff,
+    units_for,
+)
 
 # ------------------------------------------------------------------ hooke_elastic
 
@@ -337,7 +349,7 @@ def _shaft(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     di = d_i or 0.0
     if di >= d:
         raise ToolError("INVALID_ARGUMENT", "params.d_i must be smaller than d.")
-    J = math.pi * (d**4 - di**4) / 32
+    J = math.pi * pow4_diff(d, di) / 32  # d^4 - d_i^4, keeps its digits for a thin wall (D80)
     tau = T * (d / 2) / J
     sig = M * (d / 2) / (J / 2)
     seq = math.sqrt(sig * sig + k_eq * tau * tau)
@@ -556,16 +568,18 @@ def _vessel(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     dp, dm = pi_ - po, 2 * ri + t
     out: dict[str, Any] = {"r_i": ri, "r_o": ro, "t": t, "t_over_r_i": t / ri}
     if shape == "cylinder":
-        A = (pi_ * ri**2 - po * ro**2) / (ro**2 - ri**2)
-        B = (pi_ - po) * ri**2 * ro**2 / (ro**2 - ri**2)
+        A = (pi_ * ri**2 - po * ro**2) / sq_diff(ro, ri)
+        B = (pi_ - po) * ri**2 * ro**2 / sq_diff(ro, ri)
         sa = A if ends == "closed" else 0.0
         out |= {
             "sigma_h_thin": dp * dm / (2 * t),
             "sigma_a_thin": dp * dm / (4 * t) if ends == "closed" else 0.0,
             "sigma_t_inner": A + B / ri**2,
             "sigma_t_outer": A + B / ro**2,
-            "sigma_r_inner": A - B / ri**2,
-            "sigma_r_outer": A - B / ro**2,
+            # sigma_r at the walls is the pressure itself (boundary conditions): exact, while A - B / r^2
+            # is a difference of close numbers for a thin wall (D84)
+            "sigma_r_inner": -pi_,
+            "sigma_r_outer": -po,
             "sigma_a": sa,
         }
         st, sr = out["sigma_t_inner"], out["sigma_r_inner"]
@@ -577,15 +591,15 @@ def _vessel(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
             "B = (p - p_o) r_i^2 r_o^2 / (r_o^2 - r_i^2); closed ends: sigma_a = A",
         ]
     else:
-        den = ro**3 - ri**3
+        den = cube_diff(ro, ri)  # r_o^3 - r_i^3 without cancellation for a thin wall (D84)
         C = (pi_ * ri**3 - po * ro**3) / den
         D = (pi_ - po) * ri**3 * ro**3 / den
         out |= {
             "sigma_h_thin": dp * dm / (4 * t),
             "sigma_t_inner": C + D / (2 * ri**3),
             "sigma_t_outer": C + D / (2 * ro**3),
-            "sigma_r_inner": C - D / ri**3,
-            "sigma_r_outer": C - D / ro**3,
+            "sigma_r_inner": -pi_,  # boundary conditions, exact (D84)
+            "sigma_r_outer": -po,
         }
         vm = abs(out["sigma_t_inner"] - out["sigma_r_inner"])
         formulas = [

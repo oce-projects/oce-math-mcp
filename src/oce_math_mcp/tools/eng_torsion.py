@@ -22,7 +22,7 @@ from scipy.special import zeta
 
 from ..envelope import Ctx
 from ..errors import ToolError
-from .eng_base import choice, fmt_sig, need, one_of, only, op, qty, units_for
+from .eng_base import choice, fmt_sig, need, one_of, only, op, pow4_diff, qty, units_for
 
 _COMMON = {"T", "G", "L"}
 _SHAPES: dict[str, set[str]] = {
@@ -103,8 +103,8 @@ def _torsion(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
             raise ToolError(
                 "INVALID_ARGUMENT", "params.R_i (or D_i) must be smaller than R_e (or D_e)."
             )
-        j = math.pi / 2 * (r_e**4 - r_i**4)
-        tau = 2 * t_abs * r_e / (math.pi * (r_e**4 - r_i**4))
+        j = math.pi / 2 * pow4_diff(r_e, r_i)
+        tau = 2 * t_abs * r_e / (math.pi * pow4_diff(r_e, r_i))
         ctx.formula = "J = (pi/2)(Re^4 - Ri^4); tau_max = 2 T Re / (pi (Re^4 - Ri^4)) (exact)"
     elif shape == "ellipse":
         a1, a2 = need(p, "p", "length"), need(p, "q", "length")

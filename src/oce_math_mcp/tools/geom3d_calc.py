@@ -1369,7 +1369,7 @@ def _composite(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     if not isinstance(parts, list) or not parts:
         raise ToolError(
             "INVALID_ARGUMENT",
-            "Serve params.parts.",
+            "Missing params.parts.",
             '[{"shape": "box", "size": [10, 10, 10], "position": [0, 0, 0], "op": "add"}]',
         )
     vol = 0.0
