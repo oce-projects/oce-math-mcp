@@ -24,7 +24,8 @@ eng_beams: continuous beams, D69;
 eng_losses: local losses, Borda-Carnot, D70;
 eng_holes: stress concentration at holes, D71;
 eng_balance: unbalance and rotor balancing, D72;
-eng_rolling: rolling without slipping, D73); this module loads them and
+eng_rolling: rolling without slipping, D73;
+eng_kinetic: kinetic theory of gases, D87); this module loads them and
 exposes `handle` and `OPS`.
 """
 
@@ -44,6 +45,7 @@ from . import (
     eng_holes,
     eng_hx,
     eng_hydro,
+    eng_kinetic,
     eng_linkage,
     eng_losses,
     eng_machines,
@@ -82,6 +84,7 @@ __all__ = [
     "eng_holes",
     "eng_hx",
     "eng_hydro",
+    "eng_kinetic",
     "eng_linkage",
     "eng_losses",
     "eng_machines",

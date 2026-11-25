@@ -5,19 +5,19 @@
 
 ## Badges
 
-![Version](https://img.shields.io/badge/version-0.3.0-blue)
+![Version](https://img.shields.io/badge/version-0.4.0-blue)
 ![Python](https://img.shields.io/badge/python-3.12%2B-blue)
-![Platform](https://img.shields.io/badge/platform-windows-lightgrey)
+![Platform](https://img.shields.io/badge/platform-windows%20%7C%20linux-lightgrey)
 ![License](https://img.shields.io/badge/license-Apache--2.0-green)
 
 A mathematics MCP (Model Context Protocol) server for local language models. It is built to train
 **Qwen3.6** and to let it work on calculations that a model cannot do in its head: exact
 arithmetic, symbolic algebra, calculus, number theory, numerical methods, answer checking, the
-Italian calendar, 3D geometry for CAD/CNC, formal proofs in Lean 4 and 78 engineering, physics
+Italian calendar, 3D geometry for CAD/CNC, formal proofs in Lean 4 and 79 engineering, physics
 and chemistry operations.
 
-**Status: version 0.3.0.** All 10 tools answer.
-The contract defines 191 operations and all 191 are implemented (for `eng_calc` a test compares
+**Status: version 0.4.0 (in progress).** All 10 tools answer.
+The contract defines 192 operations and all 192 are implemented (for `eng_calc` a test compares
 the contract with the code).
 
 ## Why
@@ -40,7 +40,7 @@ answers of the training dataset.
 | `lean_check` | checks a proof in Lean 4 with Mathlib (60 s limit) | proof |
 | `date_calc` | Italian calendar `Europe/Rome`: age, holidays, working days, time zones | 12 |
 | `geom3d_calc` | vectors, rotations, quaternions, solids, CNC, 3D drawing calculations | 24 |
-| `eng_calc` | engineering formulas with SI units and the formula used | 78 |
+| `eng_calc` | engineering formulas with SI units and the formula used | 79 |
 
 `eng_calc` covers: strength of materials, machine elements, fluids and heat transfer, circuits,
 control, optics and acoustics, hydrostatics, pumps, open channels, flow meters, compressible flow,
@@ -57,7 +57,8 @@ electronics (LED resistor, op-amp circuits, Wheatstone bridge, 555 timer, thermi
 machines (inclined plane, leadscrew, rolling resistance) and electric machines (transformer, DC, induction
 and synchronous motors), thin plates (circular and rectangular) and continuous beams (theorem of three
 moments, with settlements and fixed ends) local losses at sudden changes of section (Borda-Carnot) and stress concentration at holes (Kirsch,
-Inglis) rotor balancing (one and two planes, ISO balance grades) and rolling without slipping.
+Inglis) rotor balancing (one and two planes, ISO balance grades), rolling without slipping and the kinetic theory
+of gases (molecular speeds, Maxwell-Boltzmann distribution, mean free path, effusion, equipartition).
 
 The full contract (names, JSON schemas, examples) is in `docs/spec/SPEC_OCE_MATH_MCP_V3.md` and in
 `docs/spec/oce_math_mcp_tools.json`. Every response has 9 fixed fields: `ok`, `tool`,
@@ -125,14 +126,14 @@ calls with known answers. It prints a JSON report and exits with code 0 only if 
 ```json
 {
   "ok": true,
-  "server_version": "0.3.0",
+  "server_version": "0.4.0",
   "python": "3.13.13",
   "tools": 10,
   "checks": [
     {
       "name": "initialize",
       "ok": true,
-      "detail": "oce-math-mcp 0.3.0"
+      "detail": "oce-math-mcp 0.4.0"
     },
     {
       "name": "tools/list",
@@ -198,8 +199,10 @@ Only `lean_check` needs it. See [Lean 4 and Mathlib](#lean-4-and-mathlib).
 
 ### Platform
 
-Tested on Windows 10 with Python 3.12.13 and 3.13.13. The Linux code path (memory limit with
-`RLIMIT_AS`, process groups) exists but is not tested; macOS is not tested.
+Tested on Windows 10 with Python 3.12.13 and 3.13.13, and on Ubuntu 22.04 (x86_64) with Python
+3.12.13: `--self-check` passes and the test suite gives 1,026 passed and 7 skipped (Lean, `pyarrow` and
+the dataset mirror not installed), so the Linux code path (memory limit with `RLIMIT_AS`, process
+groups) runs with the suite. Not tested: Lean on Linux, and macOS.
 
 ### Common problems
 

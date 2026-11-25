@@ -2,6 +2,26 @@
 
 Format: one entry per version, newest first. Dates in ISO format (yyyy-mm-dd).
 
+## 0.4.0 - 2026-11-25 (in progress)
+
+New formulas from the coverage measured on 2026-11-25 (233 formulas missing out of 903 in 11 Wikipedia
+pages), one group at a time.
+
+- Kinetic theory of gases (D87, spec 4.11.0, `eng_kinetic.py`): operation `eng_calc.kinetic_theory` with 7
+  modes: `speeds` (most probable, mean, rms and mean relative speed, mean translational energy, speed of sound
+  from the degrees of freedom), `pressure` (p = rho <v^2> / 3, temperature and number density), `distribution`
+  (Maxwell-Boltzmann density, cumulative fraction, fraction above a speed without cancellation in the tail,
+  fraction between two speeds), `mean_free_path` (from the kinetic diameter, the cross-section or the
+  viscosity; collision frequency, time between collisions, Knudsen number), `wall_flux` (impingement rate,
+  effusion through a hole, mass flow), `graham` (rate ratio or unknown molar mass) and `equipartition`
+  (molar heat capacities, gamma, internal energy). `eng_calc` 79 operations, contract 192. 7 tests in
+  `tests/test_kinetic_theory_d87.py` against the moments of the distribution integrated with mpmath, scipy's
+  chi distribution, the double integral of the wall flux and page and NIST values. Mutation check: 38
+  changed formulas out of 38 caught. The `eng_calc` description in the contract now also names the
+  topics of D64-D73 and D87 (it stopped at D60).
+- Linux tested (Ubuntu 22.04, x86_64, Python 3.12.13, uv 0.11.20): `--self-check` ok in 8.65 s; suite
+  1,026 passed and 7 skipped in 44.91 s. macOS is not tested.
+
 ## 0.3.0 - 2026-11-25
 
 Basic sciences: constants, chemistry, nuclear and modern physics, missing mechanical topics.
