@@ -1,0 +1,29 @@
+OCE Math MCP
+Copyright 2026 Oscar Contato
+
+This product includes software developed by Oscar Contato.
+Distributed under the terms of the Apache License 2.0 (see LICENSE).
+
+Third-party data included in src/oce_math_mcp/data/
+---------------------------------------------------
+
+nuclides.json.gz is derived from the AME2020 and NUBASE2020 evaluations (files mass.mas20 and
+nubase_4.mas20, Atomic Mass Data Center). Values were extracted and converted to JSON; isomer
+mass excesses were recomputed as ground state plus excitation energy. The source articles are
+published under the Creative Commons Attribution 3.0 licence
+(https://creativecommons.org/licenses/by/3.0/):
+  - W.J. Huang, M. Wang, F.G. Kondev, G. Audi, S. Naimi, "The AME2020 atomic mass evaluation (I)",
+    Chinese Physics C 45, 030002 (2021), doi:10.1088/1674-1137/abddb0
+  - M. Wang, W.J. Huang, F.G. Kondev, G. Audi, S. Naimi, "The AME2020 atomic mass evaluation (II)",
+    Chinese Physics C 45, 030003 (2021), doi:10.1088/1674-1137/abddaf
+  - F.G. Kondev, M. Wang, W.J. Huang, S. Naimi, G. Audi, "The NUBASE2020 evaluation of nuclear
+    physics properties", Chinese Physics C 45, 030001 (2021), doi:10.1088/1674-1137/abddae
+
+src/oce_math_mcp/tools/if97_data.py contains the coefficients of the IAPWS Industrial
+Formulation 1997 for the Thermodynamic Properties of Water and Steam (IAPWS-IF97), extracted
+from the IAPWS release R7-97(2012), "Revised Release on the IAPWS Industrial Formulation 1997
+for the Thermodynamic Properties of Water and Steam", International Association for the
+Properties of Water and Steam, https://iapws.org/technical-guidance/release/IF97-Rev .
+
+atomic_weights.json contains the standard and abridged atomic weights published by the IUPAC
+Commission on Isotopic Abundances and Atomic Weights (CIAAW), https://www.ciaaw.org/ .

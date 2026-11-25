@@ -1,0 +1,277 @@
+[
+  {
+    "name": "math_eval",
+    "description": "Exact arithmetic and scalar functions: Decimal/Fraction/float modes, logs, roots, trig in rad and deg, hyperbolic, combinatorics, statistics and distributions, Italian finance (VAT, withholding, loans, NPV, IRR, DCF), unit conversion, CODATA physical constants via const(\"h\").",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "expr": {"type": "string"},
+        "variables": {"type": "object"},
+        "exact_mode": {"type": "string", "enum": ["float", "decimal", "fraction"], "default": "decimal"},
+        "precision": {"type": "integer", "default": 6, "minimum": 0, "maximum": 30},
+        "show_steps": {"type": "boolean", "default": false, "description": "Add numbered steps in Italian to result.steps."}
+      },
+      "required": ["expr"]
+    }
+  },
+  {
+    "name": "math_solve",
+    "description": "Symbolic math with SymPy plus SciPy/NumPy: equations, systems, inequalities, derivatives, integrals (single, multiple, line, surface), limits, series, function study, vector calculus, Lagrange, ODE, Laplace, Fourier/FFT, Riccati LQR, linear algebra, sums, recurrences, polynomials, complex numbers. Results are self-verified.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "operation": {
+          "type": "string",
+          "enum": [
+            "solve", "solve_system", "inequality", "diff", "partial_diff",
+            "integrate", "multi_integrate", "line_integral", "surface_integral", "limit", "series",
+            "function_study", "simplify", "factor", "expand", "partial_fractions",
+            "gradient", "divergence", "curl", "laplacian", "jacobian", "hessian",
+            "lagrange_optimize", "ode", "laplace", "inv_laplace", "fourier_fft",
+            "riccati_lqr", "matrix", "optimize_num", "complex_ops",
+            "summation", "recurrence", "polynomial"
+          ]
+        },
+        "expr": {"type": "string", "description": "Scalar expression, equation with '=', or ';'-separated equations/vector components."},
+        "vector_field": {"type": "array", "items": {"type": "string"}, "description": "3D/nD vector field [Fx, Fy, Fz] for divergence/curl/jacobian/line_integral/surface_integral."},
+        "constraints": {"type": "array", "items": {"type": "string"}, "description": "Equality/inequality constraints for lagrange_optimize / optimize_num."},
+        "variables": {"type": "array", "items": {"type": "string"}},
+        "order": {"type": "integer", "default": 1},
+        "bounds": {"type": "array", "description": "[a, b] for integrate/summation, [point, dir] for limit, [x0] for series, [[x,a,b],[y,c,d],...] for multi_integrate/surface_integral, [t0, t1] for numeric ode."},
+        "ics": {"type": "object", "description": "Initial conditions for ODE e.g. {'y(0)': 1, \"y'(0)\": 0} or recurrence e.g. {'a(0)': 0, 'a(1)': 1}."},
+        "matrix_a": {"type": "array"},
+        "matrix_b": {"type": "array"},
+        "matrix_q": {"type": "array", "description": "State weight Q for riccati_lqr."},
+        "matrix_r": {"type": "array", "description": "Control weight R for riccati_lqr."},
+        "matrix_op": {
+          "type": "string",
+          "enum": ["det", "inv", "pinv", "cofactor", "projection", "norm_p", "transpose", "rank", "rref", "lu", "qr", "svd", "cholesky", "eigenvals", "eigenvects", "solve", "multiply"]
+        },
+        "poly_op": {
+          "type": "string",
+          "enum": ["roots", "nroots", "factor_list", "discriminant", "resultant", "gcd", "vieta", "coeffs", "degree"],
+          "default": "roots",
+          "description": "Sub-operation for polynomial."
+        },
+        "coords": {"type": "string", "enum": ["cartesian", "polar", "cylindrical", "spherical"], "default": "cartesian", "description": "Coordinate system for multi_integrate (Jacobian added automatically)."},
+        "time": {"type": "string", "enum": ["continuous", "discrete"], "default": "continuous", "description": "CARE or DARE for riccati_lqr."},
+        "domain": {"type": "string", "enum": ["real", "complex", "positive", "integer"], "default": "real"},
+        "numeric_samples": {"type": "array", "items": {"type": "number"}, "description": "Signal array for fourier_fft, initial guess for optimize_num."},
+        "show_steps": {"type": "boolean", "default": false, "description": "Add numbered steps in Italian to result.steps."}
+      },
+      "required": ["operation"]
+    }
+  },
+  {
+    "name": "number_theory",
+    "description": "Integer and modular arithmetic with exact big integers: primality, factorization, divisors, totient, Mobius, primes, gcd/lcm/extended gcd, modular power/inverse/square root/log, primitive roots, Legendre/Jacobi, CRT, Diophantine equations, continued fractions, partitions, digits.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "operation": {
+          "type": "string",
+          "enum": [
+            "is_prime", "factorint", "divisors", "totient", "mobius",
+            "next_prime", "prev_prime", "nth_prime", "prime_pi", "primerange",
+            "gcd", "lcm", "gcd_ext", "mod_pow", "mod_inv", "sqrt_mod", "discrete_log",
+            "primitive_root", "multiplicative_order", "legendre", "jacobi",
+            "crt", "diophantine", "continued_fraction", "partitions", "digits"
+          ]
+        },
+        "n": {"type": ["integer", "string"], "description": "Main integer (decimal string allowed for big numbers)."},
+        "m": {"type": ["integer", "string"], "description": "Second integer or modulus."},
+        "k": {"type": ["integer", "string"], "description": "Exponent, index or base."},
+        "values": {"type": "array", "items": {"type": ["integer", "string"]}, "description": "Integers for gcd/lcm, residues for crt."},
+        "moduli": {"type": "array", "items": {"type": ["integer", "string"]}, "description": "Moduli for crt."},
+        "expr": {"type": "string", "description": "Equation for diophantine; number for continued_fraction (e.g. 'sqrt(7)', '415/93')."},
+        "variables": {"type": "array", "items": {"type": "string"}},
+        "limit": {"type": "integer", "default": 1000, "minimum": 1, "maximum": 10000, "description": "Max listed items."},
+        "show_steps": {"type": "boolean", "default": false, "description": "Add numbered steps in Italian to result.steps."}
+      },
+      "required": ["operation"]
+    }
+  },
+  {
+    "name": "math_numeric",
+    "description": "Numerical math with mpmath, SciPy and NumPy: arbitrary precision evaluation (up to 1000 digits), infinite sums, numerical integrals, roots, constrained and global optimization, linear and integer programming, ODE initial value problems with events (stop when an expression reaches zero), polynomial roots, closed-form identification of constants, curve fitting.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "operation": {
+          "type": "string",
+          "enum": ["evalf", "nsum", "quad", "root", "minimize", "linprog", "ode_ivp", "polyroots", "identify", "curve_fit"]
+        },
+        "expr": {"type": "string", "description": "Expression, equation with '=', ';'-separated equations, or ';'-separated ODE right-hand sides."},
+        "variables": {"type": "array", "items": {"type": "string"}},
+        "bounds": {"type": "array", "description": "[a, b] or [[x,a,b],...] for quad/nsum, [lo, hi] bracket for root, [[lo, hi], ...] per variable for minimize/linprog, [t0, t1] for ode_ivp."},
+        "x0": {"type": "array", "items": {"type": "number"}, "description": "Initial guess, or initial state for ode_ivp."},
+        "constraints": {"type": "array", "items": {"type": "string"}, "description": "Constraints like 'x + y <= 4' or 'x*y = 1'."},
+        "digits": {"type": "integer", "default": 15, "minimum": 1, "maximum": 1000},
+        "method": {
+          "type": "string",
+          "enum": ["auto", "SLSQP", "trust-constr", "Nelder-Mead", "Powell", "BFGS", "L-BFGS-B", "differential_evolution", "brentq", "hybr", "RK45", "DOP853", "Radau", "BDF", "LSODA"],
+          "default": "auto"
+        },
+        "direction": {"type": "string", "enum": ["minimize", "maximize"], "default": "minimize"},
+        "integer": {"type": "boolean", "default": false, "description": "linprog: all variables integer (MILP)."},
+        "data_x": {"type": "array", "items": {"type": "number"}},
+        "data_y": {"type": "array", "items": {"type": "number"}},
+        "samples": {"type": "integer", "default": 11, "minimum": 2, "maximum": 1001, "description": "Output points for ode_ivp."},
+        "events": {"type": "array", "maxItems": 10, "items": {"type": "object", "properties": {"expr": {"type": "string"}, "direction": {"type": "string", "enum": ["both", "rising", "falling"], "default": "both"}, "terminal": {"type": "boolean", "default": true}}, "required": ["expr"]}, "description": "ode_ivp only: zero crossings of expressions in the variables. A terminal event stops the integration; a zero exactly at t0 does not count. Example: [{\"expr\": \"y\", \"direction\": \"falling\"}] stops when y comes down to 0."}
+      },
+      "required": ["operation"]
+    }
+  },
+  {
+    "name": "math_verify",
+    "description": "Check an answer before giving it: symbolic and random-point equivalence of two expressions, substitution of a solution into equations, derivative and antiderivative checks, numeric comparison with tolerance, counterexample search for inequalities, dimensional check of a formula with units (check_units).",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "operation": {
+          "type": "string",
+          "enum": ["equivalent", "check_solution", "check_derivative", "check_antiderivative", "check_numeric", "check_inequality", "check_units"]
+        },
+        "expr": {"type": "string", "description": "Expression, ';'-separated equations, or inequality to check."},
+        "expected": {"type": "string", "description": "Claimed result to compare with; for check_units the expected unit of the expression, e.g. \"N\"."},
+        "variables": {"type": "array", "items": {"type": "string"}},
+        "solution": {"type": "object", "description": "Claimed solution e.g. {'x': '2', 'y': '-1/3'}."},
+        "tolerance": {"type": "number", "default": 1e-9},
+        "samples": {"type": "integer", "default": 64, "minimum": 1, "maximum": 1000},
+        "domain": {"type": "string", "enum": ["real", "complex", "positive", "integer"], "default": "real"},
+        "units": {"type": "object", "description": "check_units: unit of each variable, e.g. {\"F\": \"N\", \"rho\": \"kg/m^3\", \"v\": \"m/s\", \"Cd\": \"1\"}; SI prefixes allowed (kN, MPa, mA); degC for Celsius, \"C\" is the coulomb."}
+      },
+      "required": ["operation", "expr"]
+    }
+  },
+  {
+    "name": "python_sandbox",
+    "description": "Run a short Python program in a restricted interpreter for problems no other tool covers (counting, brute force, sequences, multi-step computations). Allowed imports: math, cmath, fractions, decimal, itertools, functools, collections, statistics, random, heapq, bisect, sympy, numpy, scipy, mpmath. No files, no network, 5 s limit. Returns printed output and the value of the last expression.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "code": {"type": "string", "description": "Python source, max 8000 characters. Use print() or end with an expression."}
+      },
+      "required": ["code"]
+    }
+  },
+  {
+    "name": "lean_check",
+    "description": "Check a formal proof in Lean 4 with Mathlib. Returns whether it compiles without errors, without sorry and with only the standard axioms, with Lean messages. Code that runs programs (#eval, run_cmd, elab, macro), new axioms and native_decide are rejected. 60 s limit.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "code": {"type": "string", "description": "Lean 4 source, max 20000 characters. 'import Mathlib' is added if no import is present."},
+        "allow_sorry": {"type": "boolean", "default": false}
+      },
+      "required": ["code"]
+    }
+  },
+  {
+    "name": "date_calc",
+    "description": "Dates and times in the Italian calendar (Europe/Rome): exact age (also in months and weeks), weekday, differences (days, business days, real elapsed hours across DST) and additions, relative dates, events with DST offsets and reminders, recurring events, time zone conversion, invoice due dates (DFFM), month calendar, Italian national holidays including Easter and Easter Monday.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "operation": {
+          "type": "string",
+          "enum": ["now", "age", "weekday", "diff", "add", "resolve_relative", "event_schedule", "invoice_due", "month_calendar", "holidays", "recurring", "convert_tz"]
+        },
+        "date": {"type": "string"},
+        "birth_date": {"type": "string"},
+        "ref_date": {"type": "string"},
+        "end_date": {"type": "string"},
+        "years": {"type": "integer", "default": 0},
+        "months": {"type": "integer", "default": 0},
+        "weeks": {"type": "integer", "default": 0},
+        "days": {"type": "integer", "default": 0},
+        "hours": {"type": "integer", "default": 0},
+        "minutes": {"type": "integer", "default": 0},
+        "business_days": {"type": "boolean", "default": false},
+        "target_weekday": {"type": "string", "enum": ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]},
+        "which": {"type": "string", "enum": ["next", "previous", "this_week", "next_week", "nth_next"], "default": "next"},
+        "nth": {"type": "integer", "default": 1},
+        "duration_minutes": {"type": "integer", "default": 60},
+        "reminders_before": {"type": "array", "items": {"type": "string"}},
+        "dffm_days": {"type": "integer"},
+        "timezone": {"type": "string", "default": "Europe/Rome"},
+        "to_timezone": {"type": "string", "description": "Target IANA zone for convert_tz, e.g. 'America/New_York'."},
+        "count": {"type": "integer", "minimum": 1, "maximum": 1000, "description": "Number of occurrences for recurring."},
+        "month_week": {"type": "integer", "enum": [1, 2, 3, 4, 5, -1], "description": "recurring monthly by weekday: 1 = first, -1 = last target_weekday of the month."}
+      },
+      "required": ["operation"]
+    }
+  },
+  {
+    "name": "geom3d_calc",
+    "description": "3D geometry for CAD, CNC and robotics: vector operations, angles, rotations (Euler, axis-angle), 4x4 homogeneous transforms, quaternions, Denavit-Hartenberg forward kinematics, distances and intersections, cylindrical and spherical coordinates, bolt holes, solid and cross-section properties. For 3D drawing: 2D sketch profiles, circles through 3 points, fillets, triangle solving, curves as point lists (helix, involute, spline, parametric), CAD pick points on faces and edges, patterns, point clouds, mesh and composite part checks (volume, centroid, bounding box).",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "operation": {
+          "type": "string",
+          "enum": [
+            "vec_ops", "angle_between", "rotate_point", "transform_4x4", "quat_euler",
+            "dh_kinematics", "point_plane_distance", "line_plane_intersect",
+            "point_line_distance", "coord_convert", "pcd_holes",
+            "solid_properties", "section_properties",
+            "polygon_2d", "circle_3pts", "arc_fillet", "triangle_solve", "curve_points",
+            "intersect", "feature_points", "pattern", "point_cloud", "mesh_properties",
+            "composite_properties"
+          ]
+        },
+        "v1": {"type": "array", "items": {"type": "number"}},
+        "v2": {"type": "array", "items": {"type": "number"}},
+        "plane_point": {"type": "array", "items": {"type": "number"}},
+        "plane_normal": {"type": "array", "items": {"type": "number"}},
+        "angles_deg": {"type": "array", "items": {"type": "number"}},
+        "axis": {"type": "array", "items": {"type": "number"}},
+        "translation": {"type": "array", "items": {"type": "number"}},
+        "quat": {"type": "array", "items": {"type": "number"}},
+        "dh_table": {"type": "array", "description": "List of [a, alpha_deg, d, theta_deg] rows for dh_kinematics."},
+        "coord_from": {"type": "string", "enum": ["cartesian", "cylindrical", "spherical"]},
+        "coord_to": {"type": "string", "enum": ["cartesian", "cylindrical", "spherical"]},
+        "params": {"type": "object"},
+        "show_steps": {"type": "boolean", "default": false, "description": "Add numbered steps in Italian to result.steps."}
+      },
+      "required": ["operation"]
+    }
+  },
+  {
+    "name": "eng_calc",
+    "description": "Engineering design formulas: strength of materials (Hooke, beams, shafts, Von Mises/Tresca, Euler buckling, fatigue, pressure vessels, bolts, welds), machine design (dynamics, vibrations, gears, bearings L10, belts, CNC cutting), fluids and heat (pipes, drag/lift, heat transfer, heatsinks), electrical and control (AC/DC, RLC filters, Clarke/Park, second-order systems, PID, optics, acoustics), material properties; hydrostatics, pumps and hydraulic cylinders, open channels (Manning), flow meters and weirs, compressible flow (isentropic, normal shock, choked), ideal gas states and processes, thermodynamic cycles (Carnot, Otto, Diesel, Brayton), calorimetry; thermal stresses, Hertz contact, helical compression springs, interference (press and shrink) fits, strain transformation and strain-gauge rosettes; CODATA physical constants; chemistry (molar mass from a formula, balancing and stoichiometry, pH of strong and weak acids and bases and buffers, dilution and molarity, Arrhenius and integrated rate laws, Nernst, Faraday electrolysis, Gibbs energy and K); nuclear physics (AME2020/NUBASE2020 nuclide data: masses, binding energy, half-lives, decay modes; radioactive decay law, activity, parent-daughter chains; reaction and decay Q-values with conservation checks and thresholds); modern physics (photon, photoelectric effect, Compton, relativistic de Broglie wavelength, hydrogen-like atoms, blackbody, uncertainty principle); special relativity (gamma, energy and momentum, time dilation, length contraction, velocity addition, Doppler, Lorentz transformation, mass-energy); water and steam with IAPWS-IF97 (state from (p,T), (p,x), (T,x), (p,h), (p,s), (p,v), (T,v); saturation tables; Rankine cycle with pump and turbine efficiencies and reheat); psychrometrics of moist air (state from dry bulb and relative humidity, humidity ratio, wet bulb, dew point or enthalpy; mixing of two streams; heating and cooling coils with condensate; evaporative cooling); convection heat transfer coefficients from Nusselt correlations (laminar flat plate, cylinder in crossflow, sphere, pipe flow laminar and turbulent with Gnielinski, Dittus-Boelter, Sieder-Tate; natural convection on vertical and horizontal plates, horizontal cylinders, spheres and horizontal enclosures); heat exchangers with the effectiveness-NTU method (parallel, counter, crossflow mixed and unmixed, phase change; rating and sizing); straight fins of uniform cross-section with the four tip conditions, fin efficiency and overall efficiency of fin arrays; lumped-capacitance transient with the Biot number check); radiation exchange between gray diffuse surfaces (2D view factors, two-surface enclosures and parallel plates with radiation shields, N-surface enclosures with the radiosity method); electrostatics (Coulomb's law, field, potential and energy of point charges, capacitance of parallel plates, coaxial and eccentric cylinders, parallel wires, wire near a wall, concentric spheres, isolated sphere and disc, capacitor combinations); magnetism (field of a straight wire, loop, finite and long solenoid, toroid; force between parallel wires and on a wire; Lorentz force and cyclotron motion); inductance of solenoids, toroids, coaxial cables, straight wires, loops, rectangles, wire pairs and Wheeler coils; electromagnetic induction (Faraday flux change, rotating coil, moving rod); linkages (Grashof condition and the eight-case classification of four-bar linkages, four-bar position and velocity, slider-crank piston motion, quick-return time ratio) and planetary gear trains (Willis relation, planet speed, differential); catenary cables (from span and length with level or unequal supports, from sag, from horizontal tension) and journal bearings (Sommerfeld number, Petroff friction torque and power loss); pin-jointed 2D and 3D trusses with the direct stiffness method (member forces and stresses, reactions, nodal displacements, strain energy, degree of static indeterminacy); torsion of non-circular sections (circle, annulus, ellipse, equilateral triangle, rectangle by Fourier series, thin-walled open and closed sections by Bredt: torsion constant, maximum shear stress, twist angle).",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "operation": {
+          "type": "string",
+          "enum": [
+            "hooke_elastic", "beam_calc", "shaft_torsion_bending", "stress_criterion",
+            "euler_buckling", "fatigue_life", "pressure_vessel", "bolt_joint", "weld_fillet",
+            "kinematics_dynamics", "vibration_1dof", "gear_spur", "bearing_life",
+            "belt_drive", "cnc_machining", "fluid_pipe", "aero_hydro_force",
+            "heat_transfer", "heatsink_thermal", "circuit_ac_dc", "rlc_filter",
+            "foc_clarke_park", "control_system", "optics_acoustics", "material_lookup",
+            "hydrostatics", "pump_system", "open_channel", "flow_meter",
+            "compressible_flow", "ideal_gas", "thermo_cycle", "calorimetry",
+            "thermal_stress", "contact_hertz", "spring_helical", "interference_fit",
+            "strain_analysis", "physical_constant",
+            "molar_mass", "reaction_stoich", "acid_base", "solution_prep",
+            "reaction_kinetics", "electrochemistry", "nuclide_data", "radioactive_decay",
+            "nuclear_reaction", "modern_physics", "special_relativity", "water_steam",
+            "psychrometrics", "convection_correlation", "heat_exchanger_ntu", "fin_heat_transfer",
+            "lumped_transient", "radiation_exchange", "electrostatics", "magnetism", "inductance",
+            "electromagnetic_induction", "linkage", "planetary_gear", "cable_catenary", "journal_bearing",
+            "truss", "torsion_section", "geometric_optics", "wave_optics", "electronics",
+            "friction", "electric_machine", "plate_bending", "continuous_beam", "local_loss", "stress_concentration", "rotor_balance", "rolling"
+          ]
+        },
+        "params": {
+          "type": "object",
+          "description": "Operation-specific SI/engineering inputs (all keys explicitly documented & Pydantic-validated)."
+        }
+      },
+      "required": ["operation", "params"]
+    }
+  }
+]

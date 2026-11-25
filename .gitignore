@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+.pytest_cache/
+.hypothesis/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Editors and system
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+
+# Secrets
+.env
+*.key
+
+# Lean 4 and Mathlib inside the repo (D17)
+.lean-tools/
+lean/.lake/
+lean/lake-packages/
+lean/.oce_tmp/
+
+# Private local notes (D63)
+CLAUDE.local.md
