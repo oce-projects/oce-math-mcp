@@ -17,7 +17,7 @@ Italian calendar, 3D geometry for CAD/CNC, formal proofs in Lean 4 and 89 engine
 and chemistry operations.
 
 **Status: version 0.4.0 (in progress).** All 10 tools answer.
-The contract defines 207 operations and all 207 are implemented (for `eng_calc` a test compares
+The contract defines 208 operations and all 208 are implemented (for `eng_calc` a test compares
 the contract with the code).
 
 ## Why
@@ -32,15 +32,15 @@ answers of the training dataset.
 | Tool | What it does | Operations |
 |---|---|---|
 | `math_eval` | exact arithmetic (decimal, fraction, float), functions, statistics, Italian VAT and withholding tax, units, physical constants | expression |
-| `math_solve` | symbolic algebra and calculus with SymPy, with a check of the solutions | 34 |
+| `math_solve` | symbolic algebra and calculus with SymPy, with a check of the solutions | 39 |
 | `number_theory` | primes, factorisation, modular arithmetic, Diophantine equations | 26 |
-| `math_numeric` | arbitrary precision, numerical sums and integrals, optimisation, ODEs with events | 10 |
+| `math_numeric` | arbitrary precision, numerical sums and integrals, optimisation, ODEs with events, function plots (SVG) | 11 |
 | `math_verify` | checks an answer: equivalence, substitution, derivatives, inequalities, units | 7 |
 | `python_sandbox` | short Python programs in a restricted interpreter (counting, brute force, sequences) | program |
 | `lean_check` | checks a proof in Lean 4 with Mathlib (60 s limit) | proof |
 | `date_calc` | Italian calendar `Europe/Rome`: age, holidays, working days, time zones | 12 |
 | `geom3d_calc` | vectors, rotations, quaternions, solids, CNC, 3D drawing calculations | 24 |
-| `eng_calc` | engineering formulas with SI units and the formula used | 80 |
+| `eng_calc` | engineering formulas with SI units and the formula used | 89 |
 
 `eng_calc` covers: strength of materials, machine elements, fluids and heat transfer, circuits,
 control, optics and acoustics, hydrostatics, pumps, open channels, flow meters, compressible flow,

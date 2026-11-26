@@ -101,17 +101,18 @@
   },
   {
     "name": "math_numeric",
-    "description": "Numerical math with mpmath, SciPy and NumPy: arbitrary precision evaluation (up to 1000 digits), infinite sums, numerical integrals, roots, constrained and global optimization, linear and integer programming, ODE initial value problems with events (stop when an expression reaches zero), polynomial roots, closed-form identification of constants, curve fitting.",
+    "description": "Numerical math with mpmath, SciPy and NumPy: arbitrary precision evaluation (up to 1000 digits), infinite sums, numerical integrals, roots, constrained and global optimization, linear and integer programming, ODE initial value problems with events (stop when an expression reaches zero), polynomial roots, closed-form identification of constants, curve fitting, function plots as SVG with a table of points and the breaks found (jumps, asymptotes, holes, domain edges).",
     "parameters": {
       "type": "object",
       "properties": {
         "operation": {
           "type": "string",
-          "enum": ["evalf", "nsum", "quad", "root", "minimize", "linprog", "ode_ivp", "polyroots", "identify", "curve_fit"]
+          "enum": ["evalf", "nsum", "quad", "root", "minimize", "linprog", "ode_ivp", "polyroots", "identify", "curve_fit", "plot"]
         },
-        "expr": {"type": "string", "description": "Expression, equation with '=', ';'-separated equations, or ';'-separated ODE right-hand sides."},
+        "expr": {"type": "string", "description": "Expression, equation with '=', ';'-separated equations, ';'-separated ODE right-hand sides, or for plot up to 5 ';'-separated functions of one variable ('y = ...' allowed)."},
         "variables": {"type": "array", "items": {"type": "string"}},
-        "bounds": {"type": "array", "description": "[a, b] or [[x,a,b],...] for quad/nsum, [lo, hi] bracket for root, [[lo, hi], ...] per variable for minimize/linprog, [t0, t1] for ode_ivp."},
+        "bounds": {"type": "array", "description": "[a, b] or [[x,a,b],...] for quad/nsum, [lo, hi] bracket for root, [[lo, hi], ...] per variable for minimize/linprog, [t0, t1] for ode_ivp, finite [a, b] x range for plot."},
+        "y_bounds": {"type": "array", "minItems": 2, "maxItems": 2, "description": "plot: [low, high] of the y window; chosen from the values when missing."},
         "x0": {"type": "array", "items": {"type": "number"}, "description": "Initial guess, or initial state for ode_ivp."},
         "constraints": {"type": "array", "items": {"type": "string"}, "description": "Constraints like 'x + y <= 4' or 'x*y = 1'."},
         "digits": {"type": "integer", "default": 15, "minimum": 1, "maximum": 1000},
@@ -124,7 +125,7 @@
         "integer": {"type": "boolean", "default": false, "description": "linprog: all variables integer (MILP)."},
         "data_x": {"type": "array", "items": {"type": "number"}},
         "data_y": {"type": "array", "items": {"type": "number"}},
-        "samples": {"type": "integer", "default": 11, "minimum": 2, "maximum": 1001, "description": "Output points for ode_ivp."},
+        "samples": {"type": "integer", "default": 11, "minimum": 2, "maximum": 1001, "description": "Output points for ode_ivp; rows of the table for plot."},
         "events": {"type": "array", "maxItems": 10, "items": {"type": "object", "properties": {"expr": {"type": "string"}, "direction": {"type": "string", "enum": ["both", "rising", "falling"], "default": "both"}, "terminal": {"type": "boolean", "default": true}}, "required": ["expr"]}, "description": "ode_ivp only: zero crossings of expressions in the variables. A terminal event stops the integration; a zero exactly at t0 does not count. Example: [{\"expr\": \"y\", \"direction\": \"falling\"}] stops when y comes down to 0."}
       },
       "required": ["operation"]

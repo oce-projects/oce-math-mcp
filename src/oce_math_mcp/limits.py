@@ -24,3 +24,10 @@ LEAN_REPL_START_S = 300.0
 # D103: +0.24 MB per check (1,000 checks: 3,130 -> 3,374 MB in use); the REPL restarts after this many checks.
 LEAN_REPL_RECYCLE = 1000
 MEMORY_MB = 2_048
+# D111: math_numeric.plot. Sampling stops after PLOT_TIME_S so the call ends within TIMEOUT_S even for
+# slow functions (measured 2026-11-26 per point: besselj 0.82-2.11 ms, zeta 0.80-0.87 ms, sin(x)/x
+# 0.82-3.44 us).
+PLOT_TIME_S = 2.5
+PLOT_CURVES_MAX = 5
+# At most 2 points per pixel column: 5 curves x 2 x 560 columns x about 13 characters = 72,800.
+PLOT_SVG_MAX_CHARS = 120_000

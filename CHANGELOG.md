@@ -241,6 +241,20 @@ pages), one group at a time.
   operations, contract 207. 8 tests in `tests/test_electronegativity_d110.py` against the article's H-Br
   example (0.73), Allred's bromine (2.96), the round trips of both means and the per-mole inputs. Mutation
   check: 29 changed lines out of 29 caught.
+- Function plots (D111, spec 4.27.0, `plot.py`): new `math_numeric.plot` draws up to 5 functions of one
+  variable as an SVG written by the server (no plotting library) and returns a table of points and the
+  breaks found: jumps with their one-sided limits, asymptotes, holes, domain edges and oscillation.
+  Adaptive sampling (513-point grid, halving to 0.4 px), break searches by bisection and golden
+  section, clipping to the window and simplification; the window is cut around poles only when an
+  asymptote is found; sampling stops at 2.5 s for slow functions. New field `y_bounds`; `math_numeric`
+  11 operations, contract 208. 37 tests in `tests/test_plot_d111.py` read the SVG back and measure the
+  distance of every drawn point (0.1 px) and every segment midpoint (0.5 px) from a dense polyline of the
+  function, with sin(50x), sin(100x), tan, gamma, zeta, floor, sqrt, log, sin(x)/x, x/abs(x), sin(1/x)
+  and a narrow peak. Mutation check: 62 changed lines out of 64 caught; the 2 left are near-equivalent: `TOL_PX` 0.4 to 4.0 (every tested
+  midpoint stays as a point, and with about one grid point per pixel the distance stays 0.27-0.31 px) and
+  a cut boundary `<` to `<=` (drops one point less than 0.001 px from a jump). Full suite
+  1,448 passed in 213.33 s. The
+  README counts of `math_solve` (34, now 39) and `eng_calc` (80, now 89) were stale and are corrected.
 - Linux tested (Ubuntu 22.04, x86_64, Python 3.12.13, uv 0.11.20): `--self-check` ok in 8.65 s; suite
   1,026 passed and 7 skipped in 44.91 s. macOS is not tested.
 

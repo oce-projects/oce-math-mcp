@@ -1,6 +1,6 @@
 # `oce-math-mcp` V3 specification: final tool catalogue
 
-Spec version: **4.26.0** of 2026-11-26 (3.1.0: 3D drawing operations in `geom3d_calc` and the
+Spec version: **4.27.0** of 2026-11-26 (3.1.0: 3D drawing operations in `geom3d_calc` and the
 `show_steps` field, decisions D22 and D23; 3.2.0: `date_calc` with recurring events, time zones, real
 hours between two instants, age in months and weeks, decision D24; 3.3.0: tool status in server
 0.1.0, `lean_check` with code filter and axiom check, decision D36; 3.4.0:
@@ -30,7 +30,7 @@ decision D47;
 3.26.0: catenary cables and journal bearings, decision D58;
 3.27.0: 2D and 3D trusses, decision D59;
 3.28.0: torsion of non-circular sections, decision D60;
-4.0.0: everything in English, decision D61 (breaking: `formatted_it` -> `formatted`, step `text_it` -> `text`, English separators and ISO dates in texts, `vat`/`vat_add`/`vat_remove`/`withholding` in `math_eval`, no `weekday_it` in `date_calc`, English text values in `eng_calc`, no Italian particle aliases); 4.1.0: geometric and wave optics, decision D64; 4.2.0: practical electronics, decision D65; 4.3.0: friction in simple machines, decision D66; 4.4.0: electric machines, decision D67; 4.5.0: thin plates, decision D68; 4.6.0: continuous beams, decision D69; 4.7.0: local losses, decision D70; 4.8.0: stress concentration at holes, decision D71; 4.9.0: rotor balancing, decision D72; 4.10.0: rolling without slipping, decision D73; 4.10.1: finite results in eng_calc, decision D74; 4.11.0: kinetic theory of gases, decision D87; 4.12.0: Newtonian gravitation, decision D88; 4.12.1: `gravitation.rotating_body` towards the equator in both hemispheres, decision D89; 4.13.0: corrections of the audit of the repository, decisions D90-D97; 4.14.0: statistical mechanics and thermodynamic relations, decision D98; 4.15.0: quantum angular momentum and wavefunctions, decision D99; 4.16.0: general wave functions and modulation, decision D100; 4.17.0: `check_solution` puts the solution in before the derivatives, decision D101; 4.18.0: Lagrangian mechanics, central forces and reference frames, decision D102; 4.19.0: `lean_check` through a persistent Lean REPL with Mathlib loaded once, decision D103; 4.20.0: `sech`, `csch`, `acoth`, `asech`, `acsch`, `asec`, `acsc`, `legendre`, `hermite`, `laguerre` and exact sums in the numerical evaluation, decision D104; 4.21.0: nuclear scattering (Breit-Wigner, Rutherford, Mott) and the first Born approximation, decision D105; 4.22.0: Poynting vector, plane waves, radiation pressure and astronomical photometry, decision D106; 4.23.0: magnetic dipoles and magnetic circuits, decision D107; 4.24.0: `c_0` as a name of the speed of light and the postulates of special relativity checked on the existing operations, decision D108; 4.25.0: gravitomagnetism of a rotating body, decision D109; 4.26.0: Pauling and Mulliken electronegativity, decision D110). Server: `oce-math-mcp` (package `oce_math_mcp`).
+4.0.0: everything in English, decision D61 (breaking: `formatted_it` -> `formatted`, step `text_it` -> `text`, English separators and ISO dates in texts, `vat`/`vat_add`/`vat_remove`/`withholding` in `math_eval`, no `weekday_it` in `date_calc`, English text values in `eng_calc`, no Italian particle aliases); 4.1.0: geometric and wave optics, decision D64; 4.2.0: practical electronics, decision D65; 4.3.0: friction in simple machines, decision D66; 4.4.0: electric machines, decision D67; 4.5.0: thin plates, decision D68; 4.6.0: continuous beams, decision D69; 4.7.0: local losses, decision D70; 4.8.0: stress concentration at holes, decision D71; 4.9.0: rotor balancing, decision D72; 4.10.0: rolling without slipping, decision D73; 4.10.1: finite results in eng_calc, decision D74; 4.11.0: kinetic theory of gases, decision D87; 4.12.0: Newtonian gravitation, decision D88; 4.12.1: `gravitation.rotating_body` towards the equator in both hemispheres, decision D89; 4.13.0: corrections of the audit of the repository, decisions D90-D97; 4.14.0: statistical mechanics and thermodynamic relations, decision D98; 4.15.0: quantum angular momentum and wavefunctions, decision D99; 4.16.0: general wave functions and modulation, decision D100; 4.17.0: `check_solution` puts the solution in before the derivatives, decision D101; 4.18.0: Lagrangian mechanics, central forces and reference frames, decision D102; 4.19.0: `lean_check` through a persistent Lean REPL with Mathlib loaded once, decision D103; 4.20.0: `sech`, `csch`, `acoth`, `asech`, `acsch`, `asec`, `acsc`, `legendre`, `hermite`, `laguerre` and exact sums in the numerical evaluation, decision D104; 4.21.0: nuclear scattering (Breit-Wigner, Rutherford, Mott) and the first Born approximation, decision D105; 4.22.0: Poynting vector, plane waves, radiation pressure and astronomical photometry, decision D106; 4.23.0: magnetic dipoles and magnetic circuits, decision D107; 4.24.0: `c_0` as a name of the speed of light and the postulates of special relativity checked on the existing operations, decision D108; 4.25.0: gravitomagnetism of a rotating body, decision D109; 4.26.0: Pauling and Mulliken electronegativity, decision D110; 4.27.0: function plots as SVG, `math_numeric.plot`, decision D111). Server: `oce-math-mcp` (package `oce_math_mcp`).
 
 **This spec replaces V2** (`SPEC_OCE_MATH_MCP_E_PIANO_V2.md`) for the tool catalogue and for the
 JSON schemas. The decisions behind it are D13-D21 in `docs/DECISIONS.md`.
@@ -346,6 +346,7 @@ passed as a string (`"123456789012345678901234567890"`).
 | `polyroots` | `expr`, `variables`, `digits` | `roots` (complex strings) |
 | `identify` | `expr` (numeric value), `digits` | `candidates` (closed forms), `nsimplify` |
 | `curve_fit` | `expr` model, `variables` `["x"]` (the other letters are the parameters), `data_x`, `data_y`, `x0` | `params`, `r_squared`, `residuals` |
+| `plot` | `expr` (up to 5 functions with `;`), `variables`, `bounds` `[a, b]`, `y_bounds`, `samples`, `digits` (section 6.2) | `svg`, `columns`, `table`, `x_range`, `y_range`, `breaks`, `points` |
 
 `method = "auto"`: `SLSQP` with constraints, `BFGS` without; `RK45` for `ode_ivp`. `ode_ivp` tolerances:
 `rtol = 1e-10`, `atol = 1e-12`.
@@ -383,6 +384,56 @@ Result:
 ```
 
 ---
+
+### 6.2 `plot` (D111)
+
+Function plots as an SVG written by the server (no plotting library), with a table of points.
+
+Fields:
+
+- `expr`: 1 to 5 functions of one variable separated by `;`. `y = f(x)` plots `f(x)` with the label
+  `y = f(x)`; any other equation `a = b` plots `a - b`.
+- `variables`: optional, one name; otherwise the only free symbol, or `x` for constants.
+- `bounds`: `[a, b]`, finite, `a < b`; numbers or expressions such as `"2*pi"`.
+- `y_bounds`: optional window `[low, high]`.
+- `samples`: rows of the table (default 11); `digits`: significant digits of the table (at most 17: the
+  values are double precision).
+
+Result:
+
+- `svg`: 640 px wide, legend on top, ticks 1-2-5, dashed vertical lines at the asymptotes, one `path` per
+  curve (class `curve c0`, `curve c1`, ...), colour-blind safe colours and a dash pattern per curve.
+- `columns` (`[variable, label 1, ...]`) and `table` (`samples` evenly spaced rows `[x, y1, ...]`, `null`
+  where a function has no real value).
+- `x_range`, `y_range` (the window), `points` (samples per curve).
+- `breaks`: list of `{curve, x, kind, left, right}`; `kind` is `jump`, `asymptote`, `hole`, `domain_edge`
+  or `oscillation`; `left` and `right` are the one-sided limits for `jump` and `hole`, otherwise `null`.
+
+Sampling, for each curve:
+
+1. a grid of 513 points, evaluated coarse to fine (a time limit still leaves an even grid);
+2. a segment is halved while its midpoint is more than 0.4 px from the chord (at most 12 halvings and
+   10,000 evaluations per curve); every tested midpoint stays as a point, so a drawn segment is half of
+   an accepted one;
+3. breaks: bisection inside the segments still unresolved (jumps, poles with a sign change, oscillation),
+   bisection toward each undefined point (domain edges, holes, poles where the function is undefined) and
+   golden-section search of |f| around spikes (poles that keep their sign); 60 steps each, at most 50
+   searches of each kind per curve. A search decides from the last third of its values: |f| that keeps
+   growing is an asymptote, values that stay within 1% of the window height have a limit, anything else is
+   an oscillation;
+4. drawing: clipping to the window, at most 2 points per pixel column, Ramer-Douglas-Peucker at 0.25 px.
+
+Window without `y_bounds`: the full range of the sampled values plus 5%. Only when an asymptote is found and
+the grid values span more than 10 times their 5%-95% quantile range, the window is that quantile range
+plus 25% (warning: values cut) and the curves are sampled again in it. So a narrow peak is never cut.
+The second pass also matters for the breaks, whose thresholds follow the window height: for
+`sin(1/x) + 1/(x - 0.5)` the first window (-281 to 283) turned the oscillation at 0 into a jump.
+
+Limits: at most 5 functions (`LIMIT_EXCEEDED`); the sampling stops at 2.5 s with a warning, so the call
+stays within the 5 s timeout (one `besselj` point takes 0.82-2.11 ms); the grid and the refinement stop
+at 70% of it, so the break searches always run, and each x is evaluated once (the second pass reuses
+the values); SVG at most 120,000 characters
+(`LIMIT_EXCEEDED`); no real value on the interval: `MATH_ERROR`; one curve without real values: warning.
 
 ## 7. `math_verify`
 
@@ -1439,17 +1490,18 @@ the interpreter runs without errors.
   },
   {
     "name": "math_numeric",
-    "description": "Numerical math with mpmath, SciPy and NumPy: arbitrary precision evaluation (up to 1000 digits), infinite sums, numerical integrals, roots, constrained and global optimization, linear and integer programming, ODE initial value problems with events (stop when an expression reaches zero), polynomial roots, closed-form identification of constants, curve fitting.",
+    "description": "Numerical math with mpmath, SciPy and NumPy: arbitrary precision evaluation (up to 1000 digits), infinite sums, numerical integrals, roots, constrained and global optimization, linear and integer programming, ODE initial value problems with events (stop when an expression reaches zero), polynomial roots, closed-form identification of constants, curve fitting, function plots as SVG with a table of points and the breaks found (jumps, asymptotes, holes, domain edges).",
     "parameters": {
       "type": "object",
       "properties": {
         "operation": {
           "type": "string",
-          "enum": ["evalf", "nsum", "quad", "root", "minimize", "linprog", "ode_ivp", "polyroots", "identify", "curve_fit"]
+          "enum": ["evalf", "nsum", "quad", "root", "minimize", "linprog", "ode_ivp", "polyroots", "identify", "curve_fit", "plot"]
         },
-        "expr": {"type": "string", "description": "Expression, equation with '=', ';'-separated equations, or ';'-separated ODE right-hand sides."},
+        "expr": {"type": "string", "description": "Expression, equation with '=', ';'-separated equations, ';'-separated ODE right-hand sides, or for plot up to 5 ';'-separated functions of one variable ('y = ...' allowed)."},
         "variables": {"type": "array", "items": {"type": "string"}},
-        "bounds": {"type": "array", "description": "[a, b] or [[x,a,b],...] for quad/nsum, [lo, hi] bracket for root, [[lo, hi], ...] per variable for minimize/linprog, [t0, t1] for ode_ivp."},
+        "bounds": {"type": "array", "description": "[a, b] or [[x,a,b],...] for quad/nsum, [lo, hi] bracket for root, [[lo, hi], ...] per variable for minimize/linprog, [t0, t1] for ode_ivp, finite [a, b] x range for plot."},
+        "y_bounds": {"type": "array", "minItems": 2, "maxItems": 2, "description": "plot: [low, high] of the y window; chosen from the values when missing."},
         "x0": {"type": "array", "items": {"type": "number"}, "description": "Initial guess, or initial state for ode_ivp."},
         "constraints": {"type": "array", "items": {"type": "string"}, "description": "Constraints like 'x + y <= 4' or 'x*y = 1'."},
         "digits": {"type": "integer", "default": 15, "minimum": 1, "maximum": 1000},
@@ -1462,7 +1514,7 @@ the interpreter runs without errors.
         "integer": {"type": "boolean", "default": false, "description": "linprog: all variables integer (MILP)."},
         "data_x": {"type": "array", "items": {"type": "number"}},
         "data_y": {"type": "array", "items": {"type": "number"}},
-        "samples": {"type": "integer", "default": 11, "minimum": 2, "maximum": 1001, "description": "Output points for ode_ivp."},
+        "samples": {"type": "integer", "default": 11, "minimum": 2, "maximum": 1001, "description": "Output points for ode_ivp; rows of the table for plot."},
         "events": {"type": "array", "maxItems": 10, "items": {"type": "object", "properties": {"expr": {"type": "string"}, "direction": {"type": "string", "enum": ["both", "rising", "falling"], "default": "both"}, "terminal": {"type": "boolean", "default": true}}, "required": ["expr"]}, "description": "ode_ivp only: zero crossings of expressions in the variables. A terminal event stops the integration; a zero exactly at t0 does not count. Example: [{\"expr\": \"y\", \"direction\": \"falling\"}] stops when y comes down to 0."}
       },
       "required": ["operation"]

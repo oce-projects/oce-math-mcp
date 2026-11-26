@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import time
 from collections.abc import Callable
 from fractions import Fraction
 from typing import Any
@@ -12,7 +13,7 @@ import numpy as np
 import sympy as sp
 from mpmath.libmp.libhyper import NoConvergence
 
-from .. import limits
+from .. import limits, plot
 from ..envelope import Ctx
 from ..errors import ToolError
 from ..expr import parse, parse_relation, split_list
@@ -789,4 +790,112 @@ def _curve_fit(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         "std_errors": {str(p): _fl(stderr[i]) for i, p in enumerate(params)},
         "r_squared": r2,
         "residuals": [float(v) for v in resid],
+    }
+
+
+# ------------------------------------------------------------------ plot (D111)
+
+
+def _plot_range(raw: Any, g: Any, key: str, example: str) -> tuple[float, float]:
+    if not isinstance(raw, list) or len(raw) != 2:
+        raise ToolError("INVALID_ARGUMENT", f"'plot' needs '{key}' as [low, high].", example)
+    try:
+        lo, hi = (float(value_of(v, g)) for v in raw)
+    except TypeError:
+        raise ToolError("INVALID_ARGUMENT", f"'{key}' must be numbers.", example) from None
+    if not (math.isfinite(lo) and math.isfinite(hi)):
+        raise ToolError("INVALID_ARGUMENT", f"'{key}' must be finite.", example)
+    if not lo < hi:
+        raise ToolError(
+            "INVALID_ARGUMENT", f"'{key}' must be [low, high] with low < high.", example
+        )
+    return lo, hi
+
+
+@op("plot")
+def _plot(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
+    names = args.get("variables") or []
+    if len(names) > 1:
+        raise ToolError(
+            "INVALID_ARGUMENT",
+            "'plot' draws functions of one variable: give one name in 'variables'.",
+            '["x"]',
+        )
+    g = grammar(list(names))
+    texts = split_list(_need(args, "expr", "sin(x); cos(x)"))
+    if len(texts) > limits.PLOT_CURVES_MAX:
+        raise ToolError(
+            "LIMIT_EXCEEDED", f"At most {limits.PLOT_CURVES_MAX} functions in one plot."
+        )
+    exprs: list[Any] = []
+    labels: list[str] = []
+    for text in texts:
+        rel = parse_relation(text, g)
+        if (
+            isinstance(rel, sp.Eq)
+            and isinstance(rel.lhs, sp.Symbol)
+            and rel.lhs not in rel.rhs.free_symbols
+            and rel.lhs.name not in names
+            and (rel.rhs.free_symbols or rel.lhs.name != "x")
+        ):
+            exprs.append(rel.rhs)
+            labels.append(f"{rel.lhs} = {rel.rhs}")
+        else:
+            e = expr_of(text, g)
+            exprs.append(e)
+            labels.append(str(e))
+    free: set[Any] = set().union(*(e.free_symbols for e in exprs))
+    if names:
+        var = symbols_for(names)[0]
+    elif len(free) == 1:
+        var = next(iter(free))
+    else:
+        var = sp.Symbol("x")
+    extra = free - {var}
+    if extra:
+        raise ToolError(
+            "INVALID_ARGUMENT",
+            f"Symbols without a value: {sorted(map(str, extra))}. 'plot' draws functions of one variable; "
+            "replace the others with numbers.",
+            "sin(2*x)",
+        )
+    a, b = _plot_range(_need(args, "bounds", '[0, "2*pi"]'), g, "bounds", '[0, "2*pi"]')
+    window = None
+    if args.get("y_bounds") not in (None, []):
+        window = _plot_range(args["y_bounds"], g, "y_bounds", "[-2, 2]")
+    samples = int(args.get("samples", 11) or 11)  # 2 to 1001, checked by the schema
+    d = min(_digits(args), 17)
+    fs = [compile_expr(e, [var]) for e in exprs]
+    out = plot.make(
+        fs,
+        labels,
+        a,
+        b,
+        variable=str(var),
+        window=window,
+        deadline=time.monotonic() + limits.PLOT_TIME_S,
+    )
+    for w in out["warnings"]:
+        ctx.warn(w)
+
+    def r(v: float) -> float | None:
+        return float(f"{v:.{d}g}") if math.isfinite(v) else None
+
+    table = []
+    for x in np.linspace(a, b, samples):
+        xf = float(x)
+        table.append([r(xf)] + [r(f(xf)) for f in fs])
+    lo, hi = out["y_range"]
+    ctx.formatted = (
+        f"Plot of {len(fs)} function(s) for {var} in [{a:.6g}, {b:.6g}], y window [{lo:.6g}, {hi:.6g}], "
+        f"{len(out['breaks'])} break(s)."
+    )
+    return {
+        "svg": out["svg"],
+        "columns": [str(var), *labels],
+        "table": table,
+        "x_range": [a, b],
+        "y_range": [lo, hi],
+        "breaks": out["breaks"],
+        "points": out["points"],
     }
