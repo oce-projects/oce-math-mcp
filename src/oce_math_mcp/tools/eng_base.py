@@ -116,6 +116,7 @@ _EXTRA: dict[str, dict[str, float]] = {
     "fluence": {"1/m2": 1.0, "1/cm2": 1e4, "1/mm2": 1e6},
     "irradiance": {"W/m2": 1.0, "kW/m2": 1e3, "W/cm2": 1e4, "mW/cm2": 10.0, "W/mm2": 1e6},
     "electric_field": {"V/m": 1.0, "kV/m": 1e3, "MV/m": 1e6, "V/cm": 1e2, "V/mm": 1e3},
+    "reluctance": {"1/H": 1.0, "A/Wb": 1.0, "kA/Wb": 1e3, "MA/Wb": 1e6},
     "thermal_expansion": {
         "1/K": 1.0,
         "1/C": 1.0,
@@ -184,6 +185,7 @@ _KIND: dict[str, tuple[str, str, str]] = {
     "fluence": ("a number of particles per area (fluence)", "1/m2", "1/cm2"),
     "irradiance": ("an intensity or irradiance (power per area)", "W/m2", "kW/m2"),
     "electric_field": ("an electric field", "V/m", "kV/m"),
+    "reluctance": ("a reluctance (magnetomotive force per flux)", "1/H", "MA/Wb"),
 }
 _EXAMPLE = (
     '{"operation": "beam_calc", "params": {"support": "simply_supported", "load": "point", '

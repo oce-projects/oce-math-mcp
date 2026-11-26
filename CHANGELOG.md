@@ -198,6 +198,18 @@ pages), one group at a time.
   vector by components, its time average over a period with numpy, the IAU 2015 nominal Sun (1 au from L and
   S; M_V = 4.83 from m = -26.74), Sirius (M = 1.43) and the round trips of every relation. Mutation check: 48
   changed lines out of 48 caught.
+- Magnetic dipoles and magnetic circuits (D107, spec 4.23.0, `eng_magnetics.py`): the 9 missing formulas of
+  the electromagnetism page (sections "Magnetic circuits" and "Magnetic fields and moments"). New
+  `eng_calc.magnetic_dipole` with 3 modes: `field` (r = x - x', vector potential A and field B = curl A of a
+  point dipole), `moment` (m = (1/2) int r x J dV for a polygonal loop, exact, or N I A n for a flat loop)
+  and `torque` (tau = m x B, U = -m . B, also summed over pieces in their own fields). New
+  `eng_calc.magnetic_circuit`: magnetomotive force F = N I, reluctance of segments in series, Hopkinson's law
+  F = Phi R, B, H and the drop H l of each segment. New unit kind reluctance (`1/H`, `A/Wb`, `kA/Wb`,
+  `MA/Wb`). `eng_calc` 88 operations, contract 206. 23 tests in `tests/test_magnetics_d107.py` against the
+  dipole field by components with numpy, B = curl A by central differences on the tool's own A, the far field
+  of a circular loop (`magnetism.loop`), a 10000-sided polygon against its exact area, the spinning charged
+  sphere q omega R^2 / 5 with `math_solve.multi_integrate`, tau = -dU/dtheta and the closed core of
+  `magnetism.toroid`. Mutation check: 54 changed lines out of 54 caught.
 - Linux tested (Ubuntu 22.04, x86_64, Python 3.12.13, uv 0.11.20): `--self-check` ok in 8.65 s; suite
   1,026 passed and 7 skipped in 44.91 s. macOS is not tested.
 
