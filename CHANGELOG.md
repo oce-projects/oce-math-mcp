@@ -299,6 +299,14 @@ pages), one group at a time.
   the measure for Fe-56 (4.591 fm, 490.608 MeV), the page formula term by term for 7 nuclides, the pairing
   signs, the rms over the whole table, Z = 120 with N = 184 outside the table.
   Mutation check: 31 changed lines out of 31 caught. Full suite 1,528 passed and 1 failed in 374.16 s (the D111 plot test passes alone 3 of 3).
+- The plot tests of D111 no longer depend on the load of the machine. In the full suite of D115, with
+  another program loading the machine, `math_numeric.plot` reached its 2.5 s time limit on zeta(x) and lost
+  the pole at 1, with the warning "Sampling stopped at the time limit"; alone the test passes 3 times of 3,
+  and with the limit set to 1.0 s or 0.25 s the pole is lost. The server is unchanged (the limit is the
+  D111 choice and the warning says so). An autouse fixture of `tests/test_plot_d111.py` raises the limit
+  to 600 s for the checks of the drawing and of the breaks; the time-limit tests give their own deadline to
+  `plot.make`. Check: with a pytest plugin that makes `time.monotonic` run 50 times faster, the test fails
+  without the fixture and the 37 tests pass with it.
 - Linux tested (Ubuntu 22.04, x86_64, Python 3.12.13, uv 0.11.20): `--self-check` ok in 8.65 s; suite
   1,026 passed and 7 skipped in 44.91 s. macOS is not tested.
 

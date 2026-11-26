@@ -22,6 +22,15 @@ from tests.conftest import call, err, ok
 _POINT = re.compile(r"([ML])(-?\d+(?:\.\d+)?) (-?\d+(?:\.\d+)?)")
 
 
+@pytest.fixture(autouse=True)
+def _no_time_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The checks of the drawing and of the breaks must not depend on the load of the machine. With the
+    server's 2.5 s limit, the full suite under load from another program cut the sampling of zeta(x) and lost
+    the pole at 1, with the time-limit warning (26/11/2026). The time limit has its own tests below, which give
+    the deadline to plot.make."""
+    monkeypatch.setattr(limits, "PLOT_TIME_S", 600.0)
+
+
 def elements(svg: str, kind: str) -> list[ET.Element]:
     root = ET.fromstring(svg)
     assert root.tag.endswith("svg")
