@@ -123,6 +123,28 @@ pages), one group at a time.
   6 tests in `tests/test_check_solution_d101.py`. Mutation check of D100 and D101: 48 changed lines out of
   48 caught (47 at the first run: simplifying the residual before looking for missing names was not
   tested). One check of the KdV soliton takes 0.39 s, of the soliton travelling the wrong way 0.65 s.
+- Lagrangian mechanics, central forces and reference frames (D102, spec 4.18.0): the 21 formulas of
+  Meccanica classica still missing (Generalized mechanics, Euler's equations for rigid body dynamics,
+  Central force motion, Galilean frame transforms). New `math_solve.lagrangian`: L (or T and V) written with
+  x' for dx/dt; gives the generalized momenta, the Euler-Lagrange equations in the notation of
+  `math_solve.ode`, the energy function, the Hamiltonian by the Legendre transform with Hamilton's equations
+  (null with a warning for a singular L), the cyclic coordinates, energy conservation and, along a `path`,
+  the action and whether the path is stationary. New `math_solve.central_force`: Binet equation, force law
+  from an orbit and orbit from a force law when the equation is linear in u = 1/r (a nonlinear one, as
+  F = -k r, ran 247 s in dsolve: the server names the equation for `math_solve.ode`). New
+  `eng_calc.reference_frames` with 4 modes: Galilean frames with the apparent force, rotation about a fixed
+  axis, rotating frames (rate of a vector, Coriolis, centrifugal and Euler accelerations), Euler's equations
+  of a rigid body with the inertia tensor (symmetric, positive definite, triangle inequality). The 4
+  notation formulas of the page are text. `eng_calc` 83 operations, contract 200. 54 tests in
+  `tests/test_lagrangian_d102.py`, `tests/test_central_force_d102.py` and `tests/test_reference_frames_d102.py`
+  against textbook equations of motion, the Legendre transform found with scipy, orbits integrated with
+  scipy from the returned force, and the other frame computed with rotation matrices and finite
+  differences. Mutation check: 43 changed lines out of 43 caught (38 of 40 at the first run: the explicit
+  time derivative in d/dt of the momentum and the case of several velocities for one momentum were not
+  tested). One call takes 0.14 to 0.54 s, the double pendulum 2.34 s: simplify is used up to 100 operations,
+  cancel and factor_terms above (simplify of the double pendulum Hamiltonian took 2.44 s and the call 12.08
+  s, over the 5 s limit). Measuring also showed that the numerical check of the action called the compiled
+  function the wrong way and always said not verified; the test now checks `verified`.
 - Linux tested (Ubuntu 22.04, x86_64, Python 3.12.13, uv 0.11.20): `--self-check` ok in 8.65 s; suite
   1,026 passed and 7 skipped in 44.91 s. macOS is not tested.
 

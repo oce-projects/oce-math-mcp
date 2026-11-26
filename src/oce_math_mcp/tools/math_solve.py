@@ -2002,3 +2002,481 @@ def _wavefunction(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     out["verified"] = all(checks)
     ctx.formatted = f"|Psi|^2 = {out['density']}"
     return out
+
+
+# ------------------------------------------------------------------ Lagrangian mechanics (D102)
+
+_LAG_MAX = 6
+_LAG_EXAMPLE = "m*x'**2/2 - k*x**2/2"
+
+
+_LAG_SIMPLIFY_OPS = 100
+
+
+def _lag_tidy(e: Any) -> Any:
+    """simplify up to 100 operations, cancel and factor_terms above: simplify of the double pendulum H
+    (315 operations) took 2.44 s and the whole call 12.08 s, over the 5 s limit."""
+    if sp.count_ops(e) <= _LAG_SIMPLIFY_OPS:
+        return sp.simplify(e)
+    return sp.factor_terms(sp.cancel(e))
+
+
+def _lag_read(text: Any, coords: list[str], g: Grammar) -> Any:
+    """L, T or V with x' for the velocity of the coordinate x (the notation of math_solve.ode)."""
+    if not isinstance(text, str):
+        raise ToolError("INVALID_ARGUMENT", "The Lagrangian is a string.", _LAG_EXAMPLE)
+    return expr_of(_ode_text(text, coords, "t"), g)
+
+
+def _lag_check_form(lag: Any, funcs: dict[str, Any], t: Any) -> None:
+    """L may depend on q, q' and t only: no q'' and no q at another time."""
+    for d in lag.atoms(sp.Derivative):
+        if d.derivative_count > 1:
+            name = getattr(d.expr.func, "__name__", str(d.expr))
+            raise ToolError(
+                "INVALID_ARGUMENT",
+                f"L may depend on the coordinates, their first derivatives and t only ({name}'' found).",
+                _LAG_EXAMPLE,
+            )
+    for f in lag.atoms(sp.core.function.AppliedUndef):
+        if f.func.__name__ in funcs and f.args != (t,):
+            raise ToolError(
+                "INVALID_ARGUMENT",
+                f"Write the coordinate {f.func.__name__} without an argument: it is a function of t.",
+                _LAG_EXAMPLE,
+            )
+
+
+def _lag_symbols(
+    lag: Any, coords: list[str], funcs: dict[str, Any], t: Any, positive: bool
+) -> tuple[Any, list[Any], list[Any], list[Any], list[Any], dict[str, Any]]:
+    """L with plain symbols: q, q' (named x'), q'' (x''), momenta p_x; constants real or positive."""
+    qs = [sp.Symbol(c, real=True) for c in coords]
+    vs = [sp.Symbol(f"{c}'", real=True) for c in coords]
+    accs = [sp.Symbol(f"{c}''", real=True) for c in coords]
+    ps = [sp.Symbol(f"p_{c}", real=True) for c in coords]
+    qt = [funcs[c](t) for c in coords]
+    ls = lag.subs({sp.Derivative(q, t): v for q, v in zip(qt, vs, strict=True)})
+    ls = ls.subs(dict(zip(qt, qs, strict=True)))
+    taken = {s.name for s in ps} | {s.name for s in accs}
+    consts: dict[str, Any] = {}
+    for s in sorted(ls.free_symbols - set(qs) - set(vs) - {t}, key=lambda s: s.name):
+        if s.name in taken:
+            raise ToolError(
+                "INVALID_ARGUMENT",
+                f"The name {s.name} is a generalized momentum of this operation: rename the constant.",
+            )
+        consts[s.name] = (
+            sp.Symbol(s.name, positive=True) if positive else sp.Symbol(s.name, real=True)
+        )
+    ls = ls.xreplace({s: consts[s.name] for s in ls.free_symbols if s.name in consts})
+    return ls, qs, vs, accs, ps, consts
+
+
+def _lag_dt(f: Any, qs: list[Any], vs: list[Any], accs: list[Any], t: Any) -> Any:
+    """Total time derivative of f(q, q', t) along a motion: sum df/dq q' + df/dq' q'' + df/dt."""
+    return (
+        sp.Add(*(sp.diff(f, q) * v for q, v in zip(qs, vs, strict=True)))
+        + sp.Add(*(sp.diff(f, v) * a for v, a in zip(vs, accs, strict=True)))
+        + sp.diff(f, t)
+    )
+
+
+def _lag_euler_check(
+    lag: Any, el: list[Any], consts: dict[str, Any], qt: list[Any], syms: tuple[Any, ...], t: Any
+) -> bool:
+    """el against sympy.calculus.euler.euler_equations, an independent route (dL/dq - d/dt dL/dq' = 0)."""
+    from sympy.calculus.euler import euler_equations
+
+    qs, vs, accs = syms
+    lag = lag.xreplace({s: consts[s.name] for s in lag.free_symbols if s.name in consts})
+    try:
+        ref = euler_equations(lag, qt, t)
+    except (TypeError, ValueError, NotImplementedError):
+        return False
+    rep2 = {sp.Derivative(q, (t, 2)): a for q, a in zip(qt, accs, strict=True)}
+    rep1 = {sp.Derivative(q, t): v for q, v in zip(qt, vs, strict=True)}
+    rep0 = dict(zip(qt, qs, strict=True))
+    for e, r in zip(el, ref, strict=True):
+        rr = (r.lhs - r.rhs).subs(rep2).subs(rep1).subs(rep0)
+        if not is_zero(e + rr):
+            return False
+    return True
+
+
+def _lag_zero(e: Any, ls: Any, moving: set[Any]) -> bool:
+    """e == 0 where L is real: SymPy first, else 3 points at which L is real (|q'| < c in a relativistic L).
+
+    is_zero would also try points outside that region, where sqrt(1/z) and 1/sqrt(z) are on different branches.
+    """
+    try:
+        if _lag_tidy(e) == 0:
+            return True
+    except (TypeError, ValueError, NotImplementedError, AttributeError):
+        pass
+    syms = sorted(e.free_symbols | ls.free_symbols, key=lambda s: s.name)
+    good = 0
+    for pn, pd in ((3, 7), (6, 5), (-4, 9)):
+        subs: dict[Any, Any] = {}
+        j = i = 0
+        for s in syms:
+            if s in moving:
+                subs[s] = sp.Rational(pn, pd) + sp.Rational(j, 11)
+                j += 1
+            else:
+                subs[s] = sp.Rational(7 + i, 5)
+                i += 1
+        try:
+            lv = complex(sp.N(ls.subs(subs), 30))
+            if not (math.isfinite(lv.real) and abs(lv.imag) <= 1e-25 * (1 + abs(lv.real))):
+                continue
+            terms = [complex(sp.N(a.subs(subs), 30)) for a in sp.Add.make_args(e)]
+        except (TypeError, ValueError, ZeroDivisionError):
+            continue
+        if not abs(sum(terms)) <= 1e-20 * (1 + sum(abs(z) for z in terms)):
+            return False
+        good += 1
+    return good > 0
+
+
+def _lag_hamiltonian(
+    ls: Any, h: Any, mom: list[Any], syms: tuple[Any, ...], coords: list[str], ctx: Ctx
+) -> tuple[Any, dict[str, str] | None, bool]:
+    """H(q, p) by the Legendre transform; None for a singular L or several velocities for one momentum."""
+    qs, vs, ps = syms
+    hess = sp.Matrix([[sp.diff(ls, a, b) for b in vs] for a in vs])
+    if is_zero(hess.det()):
+        ctx.warn(
+            "The Lagrangian is singular: the matrix of second derivatives of L in the velocities has determinant 0, "
+            "so the momenta do not fix the velocities and there is no Hamiltonian H(q, p)."
+        )
+        return None, None, True
+    try:
+        sols = sp.solve([sp.Eq(p, m) for p, m in zip(ps, mom, strict=True)], vs, dict=True)
+    except (NotImplementedError, ValueError):
+        sols = []
+    sols = [s for s in sols if all(v in s for v in vs)]
+    if len(sols) != 1:
+        ctx.warn(
+            f"The velocities are not one function of the momenta ({len(sols)} solutions of p = dL/dq'): "
+            "no Hamiltonian; energy_function is h(q, q') = sum q' p - L."
+        )
+        return None, None, True
+    ham = _lag_tidy(h.subs(sols[0]))
+    at_p = dict(zip(ps, mom, strict=True))
+    moving = set(qs) | set(vs) | set(ps) | {s for s in ls.free_symbols if s.name == "t"}
+    ok = _lag_zero(ham.subs(at_p) - h, ls, moving) and all(
+        _lag_zero(sp.diff(ham, p).subs(at_p) - v, ls, moving) for p, v in zip(ps, vs, strict=True)
+    )
+    eqs: dict[str, str] = {}
+    for c, q, p in zip(coords, qs, ps, strict=True):
+        eqs[f"{c}'"] = str(_lag_tidy(sp.diff(ham, p)))
+        eqs[f"p_{c}'"] = str(_lag_tidy(-sp.diff(ham, q)))
+    return ham, eqs, ok
+
+
+def _lag_fixed(e: Any, t: Any) -> dict[Any, Any]:
+    """Values of the constants for the numerical check of the action: 7/5, 8/5, ... in name order."""
+    others = sorted(e.free_symbols - {t}, key=lambda s: s.name)
+    return {s: sp.Rational(7 + i, 5) for i, s in enumerate(others)}
+
+
+def _lag_action(
+    args: dict[str, Any],
+    ls: Any,
+    el: list[Any],
+    coords: list[str],
+    syms: tuple[Any, ...],
+    consts: dict[str, Any],
+    t: Any,
+    positive: bool,
+    ctx: Ctx,
+) -> tuple[dict[str, Any], bool]:
+    """S = integral of L dt along the path q(t), and the Euler-Lagrange residuals on that path."""
+    import mpmath
+
+    qs, vs, accs = syms
+    path, bounds = args.get("path"), args.get("bounds")
+    if not isinstance(path, dict) or not isinstance(bounds, list) or len(bounds) != 2:
+        raise ToolError(
+            "INVALID_ARGUMENT",
+            "The action needs 'path' ({coordinate: expression of t}) and 'bounds' [t1, t2].",
+            '{"path": {"x": "A*cos(w*t)"}, "bounds": [0, 2]}',
+        )
+    missing = [c for c in coords if c not in path]
+    extra = sorted(set(path) - set(coords))
+    if missing or extra:
+        raise ToolError(
+            "INVALID_ARGUMENT",
+            f"'path' needs an expression of t for every coordinate and nothing else; missing: "
+            f"{', '.join(missing) or 'none'}; not a coordinate: {', '.join(extra) or 'none'}.",
+        )
+    gp = grammar(None, extra={"t": t, **consts})
+    ends = [value_of(b, gp) for b in bounds]
+    sub: dict[Any, Any] = {}
+    for c, q, v, a in zip(coords, qs, vs, accs, strict=True):
+        e = expr_of(path[c], gp)
+        if any(s.name in coords for s in e.free_symbols):
+            raise ToolError(
+                "INVALID_ARGUMENT", "A path uses t and constants only, not the coordinates."
+            )
+        sub |= {q: e, v: sp.diff(e, t), a: sp.diff(e, t, 2)}
+
+    def assume(e: Any) -> Any:
+        new = {
+            s: sp.Symbol(s.name, positive=True) if positive else sp.Symbol(s.name, real=True)
+            for s in e.free_symbols
+            if s != t and s.name not in consts
+        }
+        return e.xreplace(new)
+
+    sub = {k: assume(v) for k, v in sub.items()}
+    ends = [assume(b) for b in ends]
+    residuals = [sp.simplify(e.subs(sub)) for e in el]
+    lp = sp.simplify(ls.subs(sub))
+    s_val = sp.integrate(lp, (t, ends[0], ends[1]), conds="none")  # generic case, checked below
+    out: dict[str, Any] = {
+        "stationary": all(is_zero(r) for r in residuals),
+        "residuals": [str(r) for r in residuals],
+    }
+    if s_val.has(sp.Integral):
+        ctx.warn("The action has no closed form here: value is null.")
+        out["value"] = None
+        return out, True
+    s_val = sp.simplify(s_val)
+    out["value"] = str(s_val)
+    fixed = _lag_fixed(lp + ends[0] + ends[1], t)
+    with mpmath.workdps(30):
+        try:
+            f = compile_mp(lp.subs(fixed), [t], 30)
+            lo, hi = (mpmath.mpf(str(sp.N(b.subs(fixed), 40))) for b in ends)
+            quad: Any = mpmath.quad  # the mpmath stubs type quad as a tuple
+            ref = quad(f, [lo, hi])
+            got = mpmath.mpf(str(sp.N(s_val.subs(fixed), 40)))
+            ok = bool(abs(got - ref) <= mpmath.mpf("1e-20") * (1 + abs(ref)))
+        except (ToolError, TypeError, ValueError, ZeroDivisionError):
+            ok = False
+    return out, ok
+
+
+@op("lagrangian")
+def _lagrangian(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
+    names = args.get("variables")
+    if not isinstance(names, list) or not names or not all(isinstance(n, str) for n in names):
+        raise ToolError(
+            "INVALID_ARGUMENT", "'variables' is the list of generalized coordinates.", '["x"]'
+        )
+    if len(names) > _LAG_MAX:
+        raise ToolError("LIMIT_EXCEEDED", f"At most {_LAG_MAX} generalized coordinates.")
+    if "t" in names:
+        raise ToolError(
+            "INVALID_ARGUMENT", "t is the time: list only the generalized coordinates.", '["x"]'
+        )
+    coords = [check_identifier(n) for n in names]
+    if len(set(coords)) != len(coords):
+        raise ToolError("INVALID_ARGUMENT", "Each generalized coordinate once.")
+    text_l, text_t, text_v = (
+        args.get("expr"),
+        args.get("kinetic_energy"),
+        args.get("potential_energy"),
+    )
+    if (text_l is None) == (text_t is None) or (text_l is not None and text_v is not None):
+        raise ToolError(
+            "INVALID_ARGUMENT",
+            "Give the Lagrangian L in 'expr', or the kinetic energy T in 'kinetic_energy' and the potential "
+            "energy V in 'potential_energy' (L = T - V): one of the two.",
+            '{"expr": "' + _LAG_EXAMPLE + '", "variables": ["x"]}',
+        )
+    domain = args.get("domain", "real")
+    if domain not in ("real", "positive"):
+        raise ToolError(
+            "INVALID_ARGUMENT", "'domain' of the constants for lagrangian: real or positive."
+        )
+    t = sp.Symbol("t", real=True)
+    funcs = {c: sp.Function(c) for c in coords}
+    g = Grammar(SOLVE_FUNCS, {"t": t, **funcs})
+    if text_l is not None:
+        lag = _lag_read(text_l, coords, g)
+    else:
+        lag = _lag_read(text_t, coords, g) - (_lag_read(text_v, coords, g) if text_v else 0)
+    _lag_check_form(lag, funcs, t)
+    ls, qs, vs, accs, ps, consts = _lag_symbols(lag, coords, funcs, t, domain == "positive")
+    qt = [funcs[c](t) for c in coords]
+
+    mom = [_lag_tidy(sp.diff(ls, v)) for v in vs]
+    forces = [sp.diff(ls, q) for q in qs]
+    el = [_lag_tidy(_lag_dt(p, qs, vs, accs, t) - f) for p, f in zip(mom, forces, strict=True)]
+    checks = [_lag_euler_check(lag, el, consts, qt, (qs, vs, accs), t)]
+    checks += [_check_derivative_numeric(ls, m, [(v, 1)]) for m, v in zip(mom, vs, strict=True)]
+    checks += [_check_derivative_numeric(ls, f, [(q, 1)]) for f, q in zip(forces, qs, strict=True)]
+    h = _lag_tidy(sp.Add(*(v * m for v, m in zip(vs, mom, strict=True))) - ls)
+    ham, ham_eqs, ok = _lag_hamiltonian(ls, h, mom, (qs, vs, ps), coords, ctx)
+    checks.append(ok)
+    out: dict[str, Any] = {
+        "coordinates": coords,
+        "lagrangian": str(ls),
+        "momenta": {f"p_{c}": str(m) for c, m in zip(coords, mom, strict=True)},
+        "equations": [f"{e} = 0" for e in el],
+        "energy_function": str(h),
+        "hamiltonian": None if ham is None else str(ham),
+        "hamilton_equations": ham_eqs,
+        "cyclic_coordinates": [c for c, f in zip(coords, forces, strict=True) if is_zero(f)],
+        "energy_conserved": is_zero(sp.diff(ls, t)),
+    }
+    if args.get("path") is not None or args.get("bounds") is not None:
+        out["action"], ok = _lag_action(
+            args, ls, el, coords, (qs, vs, accs), consts, t, domain == "positive", ctx
+        )
+        checks.append(ok)
+    out["verified"] = all(checks)
+    ctx.step(f"Lagrangian L = {ls} (x' is dx/dt).")
+    ctx.step(f"Generalized momenta p = dL/dq': {out['momenta']}.")
+    ctx.step(f"Euler-Lagrange d/dt(dL/dq') - dL/dq = 0: {out['equations']}.")
+    ctx.step(f"Hamiltonian H = sum p q' - L: {out['hamiltonian']}.")
+    ctx.formatted = "; ".join(out["equations"])
+    return out
+
+
+# ------------------------------------------------------------------ central force, Binet equation (D102)
+
+
+def _cf_symbols() -> dict[str, Any]:
+    return {
+        "theta": sp.Symbol("theta", real=True),
+        "r": sp.Symbol("r", positive=True),
+        "mu": sp.Symbol("mu", positive=True),
+        "l": sp.Symbol("l", positive=True),
+    }
+
+
+def _cf_positive(e: Any, sy: dict[str, Any]) -> Any:
+    """Every name other than theta, r, mu and l is a positive constant."""
+    keep = set(sy.values())
+    if any(s.name == "u" for s in e.free_symbols):
+        raise ToolError("INVALID_ARGUMENT", "u is 1/r in this operation: rename the constant u.")
+    return e.xreplace(
+        {s: sp.Symbol(s.name, positive=True) for s in e.free_symbols if s not in keep}
+    )
+
+
+def _cf_newton_force(orbit: Any, sy: dict[str, Any]) -> Any:
+    """F from Newton's radial equation mu (r'' - r theta'^2) with theta' = l / (mu r^2): independent of Binet."""
+    th, mu, ell = sy["theta"], sy["mu"], sy["l"]
+    thd = ell / (mu * orbit**2)
+    rd = sp.diff(orbit, th) * thd
+    rdd = sp.diff(rd, th) * thd
+    return mu * (rdd - orbit * thd**2)
+
+
+def _cf_from_orbit(text: Any, sy: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
+    th, r, mu, ell = sy["theta"], sy["r"], sy["mu"], sy["l"]
+    orbit = _cf_positive(expr_of(text, grammar(None, extra=sy)), sy)
+    if orbit.has(r):
+        raise ToolError(
+            "INVALID_ARGUMENT",
+            "The orbit is r as a function of theta: it must not contain r.",
+            "p/(1 + e*cos(theta))",
+        )
+    u = sp.simplify(1 / orbit)
+    f_th = sp.simplify(-(ell**2) * u**2 * (sp.diff(u, th, 2) + u) / mu)
+    ok = is_zero(f_th - _cf_newton_force(orbit, sy))
+    force = None
+    if not orbit.has(th):
+        ctx.warn(
+            "The orbit is circular: any attractive central force of this size at that radius holds it, so the orbit "
+            "does not fix F as a function of r; force_theta is the force on the circle."
+        )
+    else:
+        try:
+            sols = sp.solve(sp.Eq(r, orbit), th)
+        except (NotImplementedError, ValueError):
+            sols = []
+        cands = []
+        for s in sols:
+            c = sp.simplify(f_th.subs(th, s))
+            if not c.has(th) and c not in cands and is_zero(c.subs(r, orbit) - f_th):
+                cands.append(c)
+        if len(cands) == 1:
+            force = cands[0]
+        else:
+            ctx.warn(
+                "F could not be written as one function of r: force is null, force_theta is F(theta)."
+            )
+    return {
+        "orbit": str(orbit),
+        "u": str(u),
+        "binet_equation": "u'' + u = -mu*F/(l**2*u**2)",
+        "force_theta": str(f_th),
+        "force": None if force is None else str(force),
+        "verified": ok,
+    }
+
+
+def _cf_from_force(args: dict[str, Any], sy: dict[str, Any]) -> dict[str, Any]:
+    th, r, mu, ell = sy["theta"], sy["r"], sy["mu"], sy["l"]
+    force = _cf_positive(expr_of(args["force"], grammar(None, extra=sy)), sy)
+    if force.has(th):
+        raise ToolError(
+            "INVALID_ARGUMENT", "A central force depends on r only, not on theta.", "-k/r**2"
+        )
+    w = sp.Symbol("u", positive=True)
+    rhs = sp.simplify(-mu * force.subs(r, 1 / w) / (ell**2 * w**2))
+    binet = f"u'' + u = {rhs}"
+    if not (rhs.is_polynomial(w) and sp.Poly(rhs, w).degree() <= 1):
+        raise ToolError(
+            "MATH_ERROR",
+            f"The Binet equation {binet} is not linear in u, so no closed form is tried. Solve it with "
+            'math_solve.ode (expr that equation, variables ["u", "theta"], ics and bounds for the '
+            "numerical solution).",
+        )
+    uf = sp.Function("u")
+    big_u = uf(th)
+    eq = sp.Eq(sp.diff(big_u, th, 2) + big_u, rhs.subs(w, big_u))
+    g = grammar(None, extra={"theta": th, "mu": mu, "l": ell})
+    ics = {k: _cf_positive(v, sy) for k, v in _ics(args.get("ics"), {"u": uf}, th, g).items()}
+    sol = sp.dsolve(eq, big_u, ics=ics or None)
+    if isinstance(sol, list):
+        raise ToolError(
+            "MATH_ERROR", "The Binet equation has several solutions here: use math_solve.ode."
+        )
+    u_sol: Any = cast(Any, sol).rhs
+    orbit = sp.simplify(1 / u_sol)
+    ok = sp.checkodesol(eq, sol)[0] is True and is_zero(
+        _cf_newton_force(orbit, sy) - force.subs(r, orbit)
+    )
+    return {
+        "force": str(force),
+        "binet_equation": binet,
+        "u": str(u_sol),
+        "orbit": str(orbit),
+        "verified": ok,
+    }
+
+
+@op("central_force")
+def _central_force(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
+    has_orbit, has_force = args.get("orbit") is not None, args.get("force") is not None
+    if has_orbit == has_force:
+        raise ToolError(
+            "INVALID_ARGUMENT",
+            "Give one of 'orbit' (r as a function of theta) or 'force' (F as a function of r, negative = "
+            "attractive); mu is the (reduced) mass and l the angular momentum.",
+            '{"operation": "central_force", "orbit": "p/(1 + e*cos(theta))"}',
+        )
+    sy = _cf_symbols()
+    if has_orbit:
+        if args.get("ics") is not None:
+            raise ToolError(
+                "INVALID_ARGUMENT",
+                "'ics' is for 'force' (the constants of u(theta)), not for 'orbit'.",
+            )
+        out = _cf_from_orbit(args["orbit"], sy, ctx)
+        ctx.formatted = f"F(r) = {out['force']}; F(theta) = {out['force_theta']}"
+    else:
+        out = _cf_from_force(args, sy)
+        ctx.formatted = f"{out['binet_equation']}; r(theta) = {out['orbit']}"
+    ctx.step("Binet equation: u'' + u = -mu F / (l^2 u^2), u = 1/r, ' = d/dtheta.")
+    ctx.step(
+        "Back-check: Newton's radial equation mu (r'' - r theta'^2) = F with theta' = l / (mu r^2)."
+    )
+    return out

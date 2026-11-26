@@ -28,7 +28,8 @@ eng_rolling: rolling without slipping, D73;
 eng_kinetic: kinetic theory of gases, D87;
 eng_grav: Newtonian gravitation, D88;
 eng_stat: statistical mechanics, D98;
-eng_waves: general wave functions and modulation, D100); this module loads them and
+eng_waves: general wave functions and modulation, D100;
+eng_frames: reference frames and Euler's equations of a rigid body, D102); this module loads them and
 exposes `handle` and `OPS`.
 """
 
@@ -43,6 +44,7 @@ from . import (
     eng_elec,
     eng_electronics,
     eng_em,
+    eng_frames,
     eng_friction,
     eng_gas,
     eng_grav,
@@ -85,6 +87,7 @@ __all__ = [
     "eng_elec",
     "eng_electronics",
     "eng_em",
+    "eng_frames",
     "eng_friction",
     "eng_gas",
     "eng_grav",

@@ -17,7 +17,7 @@ Italian calendar, 3D geometry for CAD/CNC, formal proofs in Lean 4 and 82 engine
 and chemistry operations.
 
 **Status: version 0.4.0 (in progress).** All 10 tools answer.
-The contract defines 197 operations and all 197 are implemented (for `eng_calc` a test compares
+The contract defines 200 operations and all 200 are implemented (for `eng_calc` a test compares
 the contract with the code).
 
 ## Why
