@@ -1847,18 +1847,19 @@ def _wf_fixed(e: Any, xs: list[Any]) -> dict[Any, Any]:
     return {s: sp.Rational(7 + i, 5) for i, s in enumerate(others)}
 
 
-def _wf_check_local(psi: Any, rho: Any, cur: list[Any], xs: list[Any]) -> bool:
-    """rho = |Psi|^2 and j = (hbar/m) Im(Psi* dPsi/dx) at 3 points, with mpmath derivatives (as D90)."""
+def _wf_check_local(psi: Any, rho: Any, cur: list[Any], xs: list[Any], masses: list[Any]) -> bool:
+    """rho = |Psi|^2 and j_n = (hbar/m_n) Im(Psi* dPsi/dx_n) at 3 points, with mpmath derivatives (as D90)."""
     import mpmath
 
-    hbar, mass = _wf_const("hbar"), _wf_const("m")
-    fixed = _wf_fixed(psi + hbar + mass, xs)
+    hbar = _wf_const("hbar")
+    fixed = _wf_fixed(psi + hbar + sp.Add(*masses), xs)
     p0 = psi.subs(fixed)
     r0 = rho.subs(fixed)
     c0 = [c.subs(fixed) for c in cur]
     good = 0
     with mpmath.workdps(40):
-        h_m = _mp_value(fixed[hbar] / fixed[mass], {}).real
+        # D118: hbar / m_n for each variable
+        h_m = [_mp_value(fixed[hbar] / m.subs(fixed), {}).real for m in masses]
         for pn, pd in ((3, 7), (6, 5), (-4, 9)):
             pts = {x: mpmath.mpf(pn + j) / pd for j, x in enumerate(xs)}
             try:
@@ -1873,7 +1874,7 @@ def _wf_check_local(psi: Any, rho: Any, cur: list[Any], xs: list[Any]) -> bool:
                     def f(v: Any, x: Any = x, rest: dict[Any, Any] = rest) -> Any:
                         return _mp_value(p0, {**rest, x: v})
 
-                    want = h_m * mpmath.im(mpmath.conj(val) * mpmath.diff(f, pts[x]))
+                    want = h_m[i] * mpmath.im(mpmath.conj(val) * mpmath.diff(f, pts[x]))
                     if abs(_mp_value(c0[i], pts) - want) > mpmath.mpf("1e-25") * (1 + abs(want)):
                         return False
             except (TypeError, ValueError, ZeroDivisionError):
@@ -2021,6 +2022,41 @@ def _wf_momentum(psi: Any, xs: list[Any], ctx: Ctx) -> tuple[str | None, list[st
     return str(phi), names, bool(ok)
 
 
+def _wf_masses(raw: Any, names: list[str], g: Grammar) -> list[Any]:
+    """D118: one mass per space variable (page "Schroedinger equation", H = sum p_n^2 / (2 m_n) + V); each mass is
+    an expression of positive constants, e.g. "m1" or "2*m"; without the argument every variable has the mass m."""
+    example = '["m1", "m2"]'
+    if raw is None:
+        return [_wf_const("m")] * len(names)
+    if not isinstance(raw, list):
+        raise ToolError(
+            "INVALID_ARGUMENT", "'masses' is a list, one mass for each space variable.", example
+        )
+    if len(raw) != len(names):
+        raise ToolError(
+            "INVALID_ARGUMENT",
+            f"'masses' has one mass for each space variable: {len(names)}, not {len(raw)}.",
+            example,
+        )
+    out: list[Any] = []
+    for text in raw:
+        if not isinstance(text, str):
+            raise ToolError(
+                "INVALID_ARGUMENT", 'Each mass is a string, e.g. "m1" or "2*m".', example
+            )
+        m = _wf_rename(expr_of(text, g), names)
+        if {s.name for s in m.free_symbols} & (set(names) | {"t"}):
+            raise ToolError(
+                "INVALID_ARGUMENT",
+                f"The mass {text} uses a space variable or t: it is a constant.",
+                example,
+            )
+        if m.is_positive is not True:
+            raise ToolError("INVALID_ARGUMENT", f"The mass {text} must be positive.", example)
+        out.append(m)
+    return out
+
+
 @op("wavefunction")
 def _wavefunction(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     names = _need(args, "variables", '["x"]')
@@ -2036,13 +2072,17 @@ def _wavefunction(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     psi = _wf_rename(expr_of(_need(args, "expr", _WF_EXAMPLE), g), names)
     xs = [sp.Symbol(n, real=True) for n in names]
     t = sp.Symbol("t", real=True)
-    hbar, mass = _wf_const("hbar"), _wf_const("m")
+    hbar = _wf_const("hbar")
+    masses = _wf_masses(args.get("masses"), names, g)
     rho = sp.simplify(sp.conjugate(psi) * psi)
     cur = [
-        sp.simplify(hbar / mass * sp.im(sp.expand(sp.conjugate(psi) * sp.diff(psi, x)))) for x in xs
+        sp.simplify(hbar / m * sp.im(sp.expand(sp.conjugate(psi) * sp.diff(psi, x))))
+        for x, m in zip(xs, masses, strict=True)
     ]
     out: dict[str, Any] = {"density": str(rho), "current": [str(c) for c in cur]}
-    checks = [_wf_check_local(psi, rho, cur, xs)]
+    if args.get("masses") is not None:
+        out["masses"] = [str(m) for m in masses]
+    checks = [_wf_check_local(psi, rho, cur, xs, masses)]
     if args.get("bounds") is not None:
         out["probability"], ok = _wf_probability(rho, xs, args["bounds"], names, ctx)
         checks.append(ok)
@@ -2051,7 +2091,9 @@ def _wavefunction(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         checks.append(ok)
     if args.get("potential_energy") is not None:
         pot = _wf_rename(expr_of(args["potential_energy"], g), names)
-        h_psi = -(hbar**2) / (2 * mass) * sp.Add(*(sp.diff(psi, x, 2) for x in xs)) + pot * psi
+        # D118: -(hbar^2 / 2) sum_n (1 / m_n) d2Psi/dx_n^2 + V Psi
+        kinetic = sp.Add(*(sp.diff(psi, x, 2) / m for x, m in zip(xs, masses, strict=True)))
+        h_psi = -(hbar**2) / 2 * kinetic + pot * psi
         if psi.has(t):
             res = sp.simplify(sp.I * hbar * sp.diff(psi, t) - h_psi)
             out["schrodinger"] = {"residual": str(res), "satisfied": is_zero(res)}

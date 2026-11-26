@@ -339,6 +339,16 @@ pages), one group at a time.
   of the page, mu = c T - T S / N), A of an ideal gas with N (Euler, G = N mu), U without N, N in the
   variables of U, H, A and G only, the infinite expression.
   Mutation check: 28 changed lines out of 33 caught at the first round; after 4 new tests and 1 equivalent rewrite removed, 7 out of 7. Full suite 1,569 passed in 237.60 s.
+- `wavefunction` with one mass per space variable (D118, spec 4.34.0), point 2 of group B (8 formulas of the
+  page "Schroedinger equation" in the measure of the 475 formulas). New optional argument `masses`, one
+  expression of positive constants per space variable (e.g. ["m1", "m2"], or each mass 3 times for two
+  particles in 3D): j_n = (hbar / m_n) Im(Psi* dPsi/dx_n), H Psi = -(hbar^2 / 2) sum_n (1 / m_n) d2Psi/dx_n^2
+  + V Psi, and the check of j uses hbar / m_n. Without it every variable has the mass m, as before (5 calls
+  compared). 16 tests in `tests/test_wavefunction_masses_d118.py`: the value of the measure (H Psi with
+  m1 = 1, m2 = 2), two oscillators with different masses (ground state E = hbar w, time-dependent
+  equation), the current with one mass per variable, two particles in 3D (E = 3 hbar w), a mass written as
+  an expression, the same mass everywhere equal to the result without `masses`, errors.
+  Mutation check: 13 changed lines out of 14 caught at the first round; after a stricter error test, 2 out of 2. Full suite 1,585 passed in 255.75 s.
 - Linux tested (Ubuntu 22.04, x86_64, Python 3.12.13, uv 0.11.20): `--self-check` ok in 8.65 s; suite
   1,026 passed and 7 skipped in 44.91 s. macOS is not tested.
 
