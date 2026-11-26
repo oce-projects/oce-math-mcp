@@ -68,13 +68,17 @@ ALIASES: dict[str, str] = {
     "u_MeV": "atomic mass constant energy equivalent in MeV",
 }
 SYMBOL = {v: k for k, v in ALIASES.items()}
+# Other names of a short symbol (D108): c_0 is the symbol of the speed of light in vacuum on the page
+# "List of relativistic equations". Kept apart from ALIASES, so SYMBOL still gives "c".
+OTHER_NAMES: dict[str, str] = {"c_0": "c", "c0": "c"}
 
 
 def lookup(name: str) -> tuple[str, float, str, float]:
     """CODATA name, value, unit, standard uncertainty; accepts short symbols and any letter case."""
     if not isinstance(name, str) or not name.strip():
         raise ToolError("INVALID_ARGUMENT", "The name of the constant is a text.", "const('h')")
-    key = ALIASES.get(name.strip()) or _LOWER.get(name.strip().lower())
+    short = OTHER_NAMES.get(name.strip(), name.strip())
+    key = ALIASES.get(short) or _LOWER.get(name.strip().lower())
     if key is None:
         near = difflib.get_close_matches(name.strip().lower(), list(_LOWER), n=5, cutoff=0.6)
         hint = ", ".join(_LOWER[x] for x in near) or ", ".join(list(ALIASES)[:12])

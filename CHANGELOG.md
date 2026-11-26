@@ -210,6 +210,16 @@ pages), one group at a time.
   of a circular loop (`magnetism.loop`), a 10000-sided polygon against its exact area, the spinning charged
   sphere q omega R^2 / 5 with `math_solve.multi_integrate`, tau = -dU/dtheta and the closed core of
   `magnetism.toroid`. Mutation check: 54 changed lines out of 54 caught.
+- Postulates of special relativity (D108, spec 4.24.0): the 5 missing formulas of the relativity page
+  (section "Postulates of Special Relativity") are the symbol c_0, the speed of light in vacuum. `c_0` and
+  `c0` are now names of the constant `c` in `const()` and `eng_calc.physical_constant` (kept apart from the
+  short symbols, so the symbol shown stays `c`). No new operation: 17 tests in `tests/test_postulates_d108.py`
+  check both postulates on `special_relativity` (c added to any frame velocity stays c, a light ray stays
+  lightlike after a boost, c bounds every speed; the interval is invariant, two boosts make one boost with
+  the added velocity, the opposite boost undoes the boost). Fixed: `velocity_addition` with `u` above c said
+  "must be less than the speed of light", but u = c is allowed there; it now says "must not exceed".
+  Mutation check: 14 changed lines out of 14 caught (the first run left the lightlike tolerance unchecked: an
+  exact x = c t gives s2 = 0 for any tolerance; the test now classifies the rounded event of the moving frame).
 - Linux tested (Ubuntu 22.04, x86_64, Python 3.12.13, uv 0.11.20): `--self-check` ok in 8.65 s; suite
   1,026 passed and 7 skipped in 44.91 s. macOS is not tested.
 

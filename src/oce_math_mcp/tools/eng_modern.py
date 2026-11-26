@@ -659,7 +659,8 @@ def _beta_of(
         else need(p, bkey, None, positive=not signed)
     )
     if abs(b) > 1 or (abs(b) == 1 and not light):
-        raise ToolError("INVALID_ARGUMENT", f"|{k}| must be less than the speed of light.")
+        bound = "must not exceed" if light else "must be less than"  # D108: light may move at c
+        raise ToolError("INVALID_ARGUMENT", f"|{k}| {bound} the speed of light.")
     return b
 
 
