@@ -22,6 +22,7 @@ Op = Callable[[dict[str, Any], Ctx], dict[str, Any]]
 _EV = 1.602176634e-19  # J, exact in the 2019 SI
 _C = 299792458.0  # m/s, exact
 _U = lookup("atomic mass constant")[1]  # kg, CODATA
+_PC = 149597870700.0 * 648000 / math.pi  # m: the parsec of IAU 2015
 _YEAR = 365.25 * 86400.0  # Julian year (IAU), for inputs in y, a, ky, My
 OPS: dict[str, tuple[Op, frozenset[str]]] = {}
 
@@ -73,7 +74,17 @@ _EXTRA: dict[str, dict[str, float]] = {
         "My": 1e6 * _YEAR,
     },
     "energy": {"keV": 1e3 * _EV, "MeV": 1e6 * _EV, "GeV": 1e9 * _EV},
-    "length": {"pm": 1e-12, "fm": 1e-15, "angstrom": 1e-10, "Å": 1e-10},
+    "length": {
+        "pm": 1e-12,
+        "fm": 1e-15,
+        "angstrom": 1e-10,
+        "Å": 1e-10,
+        "au": 149597870700.0,  # exact (IAU 2012)
+        "ly": _C * 365.25 * 86400,  # Julian year
+        "pc": _PC,
+        "kpc": 1e3 * _PC,
+        "Mpc": 1e6 * _PC,
+    },
     "mass": {"u": _U, "Da": _U, "MeV/c2": 1e6 * _EV / _C**2, "GeV/c2": 1e9 * _EV / _C**2},
     "activity": {
         "Bq": 1.0,
@@ -103,6 +114,8 @@ _EXTRA: dict[str, dict[str, float]] = {
     "wavenumber": {"1/m": 1.0, "1/cm": 1e2, "1/nm": 1e9, "1/pm": 1e12, "1/fm": 1e15},
     "coupling": {"J*m": 1.0, "MeV*fm": 1e6 * _EV * 1e-15, "eV*nm": _EV * 1e-9},
     "fluence": {"1/m2": 1.0, "1/cm2": 1e4, "1/mm2": 1e6},
+    "irradiance": {"W/m2": 1.0, "kW/m2": 1e3, "W/cm2": 1e4, "mW/cm2": 10.0, "W/mm2": 1e6},
+    "electric_field": {"V/m": 1.0, "kV/m": 1e3, "MV/m": 1e6, "V/cm": 1e2, "V/mm": 1e3},
     "thermal_expansion": {
         "1/K": 1.0,
         "1/C": 1.0,
@@ -169,6 +182,8 @@ _KIND: dict[str, tuple[str, str, str]] = {
     "wavenumber": ("a wavenumber", "1/m", "1/fm"),
     "coupling": ("a coupling alpha = Z1 Z2 e^2 / (4 pi eps0) (energy x length)", "J*m", "MeV*fm"),
     "fluence": ("a number of particles per area (fluence)", "1/m2", "1/cm2"),
+    "irradiance": ("an intensity or irradiance (power per area)", "W/m2", "kW/m2"),
+    "electric_field": ("an electric field", "V/m", "kV/m"),
 }
 _EXAMPLE = (
     '{"operation": "beam_calc", "params": {"support": "simply_supported", "load": "point", '

@@ -30,7 +30,8 @@ eng_grav: Newtonian gravitation, D88;
 eng_stat: statistical mechanics, D98;
 eng_waves: general wave functions and modulation, D100;
 eng_frames: reference frames and Euler's equations of a rigid body, D102;
-eng_scatter: nuclear scattering, Breit-Wigner, Rutherford and Mott, D105); this module loads them and
+eng_scatter: nuclear scattering, Breit-Wigner, Rutherford and Mott, D105;
+eng_photonics: electromagnetic radiation and astronomical photometry, D106); this module loads them and
 exposes `handle` and `OPS`.
 """
 
@@ -61,6 +62,7 @@ from . import (
     eng_modern,
     eng_nuc,
     eng_optics,
+    eng_photonics,
     eng_plates,
     eng_psychro,
     eng_rad,
@@ -105,6 +107,7 @@ __all__ = [
     "eng_modern",
     "eng_nuc",
     "eng_optics",
+    "eng_photonics",
     "eng_plates",
     "eng_psychro",
     "eng_rad",

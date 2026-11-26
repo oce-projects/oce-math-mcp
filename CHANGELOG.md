@@ -186,6 +186,18 @@ pages), one group at a time.
   wavenumber (`1/fm`), coupling (`MeV*fm`), fluence (`1/cm2`). The 7 Lagrangians of the fundamental forces are
   definitions with no number to compute: counted as text. `eng_calc` 84 operations, contract 202 (the README
   said 82 engineering operations since D102, now 84). Found measuring: `compile_mp` (D104) had a step between the rounded and the exact path of a sum (up to 50 units in the last place, and 1e-30 when mpmath raises the precision, as `quadosc` does to 340 bits, because its constants kept the digits of the compilation), so `quadosc` did not converge: Woods-Saxon with `at` took 17.68 s. Now it computes with 10 guard digits, rounds once and rounds each constant at the working precision: 1.56 s, same value. 65 tests: 37 in `tests/test_nuclear_scattering_d105.py` against the Lorentzian line (half height, area), the neutron de Broglie wavelength, hbar in eV s, the classical relation dsigma/dOmega = b / sin(theta) |db/dtheta| by finite differences, energy conservation at the turning point and the symmetrized Coulomb amplitudes computed with mpmath; 26 in `tests/test_born_d105.py` against the textbook Yukawa, gaussian and square-well amplitudes, the Rutherford cross section of `eng_calc` and the Fourier integral of QUADPACK (QAWF), the time limit and the rounding of `compile_mp`. Mutation check: 59 changed lines out of 59 caught (the first run caught 21 of 33 in `eng_scatter.py`: `pytest.approx` kept its default abs = 1e-12, which accepts any cross section of 1e-28 m2; fixed in the test).
+- Electromagnetic radiation and photometry (D106, spec 4.22.0, `eng_photonics.py`): the 12 missing formulas of
+  the photonics page (sections "Physical optics (EM luminal waves)" and "Astrophysics definitions"). New
+  `eng_calc.em_radiation` with 3 modes: `poynting` (N = E x B / mu0 or E x H, flux through a flat surface),
+  `plane_wave` (E0, E_rms, B0, B_rms, intensity, energy and momentum density, pressures) and
+  `radiation_pressure` (reflectance, angle of incidence, force, momentum and energy; the page's p = U / c and
+  P = I / c = p / (A t)). New `eng_calc.photometry` with 5 modes: `luminosity_distance`,
+  `apparent_magnitude`, `distance_modulus`, `color_index` (U - B, B - V), `bolometric_correction`. New units:
+  `au`, `ly`, `pc`, `kpc`, `Mpc`, irradiance (`W/m2`, `mW/cm2`, ...), electric field (`V/m`, `kV/m`, ...).
+  `eng_calc` 86 operations, contract 204. 31 tests in `tests/test_photonics_d106.py` against the Poynting
+  vector by components, its time average over a period with numpy, the IAU 2015 nominal Sun (1 au from L and
+  S; M_V = 4.83 from m = -26.74), Sirius (M = 1.43) and the round trips of every relation. Mutation check: 48
+  changed lines out of 48 caught.
 - Linux tested (Ubuntu 22.04, x86_64, Python 3.12.13, uv 0.11.20): `--self-check` ok in 8.65 s; suite
   1,026 passed and 7 skipped in 44.91 s. macOS is not tested.
 
