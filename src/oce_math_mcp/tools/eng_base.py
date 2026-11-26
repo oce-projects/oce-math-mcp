@@ -42,6 +42,7 @@ _EXTRA: dict[str, dict[str, float]] = {
     "mass_flow_rate": {"kg/s": 1.0, "kg/h": 1 / 3600, "t/h": 1000 / 3600, "kg/min": 1 / 60},
     "dynamic_viscosity": {"Pa*s": 1.0, "Pas": 1.0, "mPa*s": 1e-3, "cP": 1e-3, "P": 0.1},
     "kinematic_viscosity": {"m2/s": 1.0, "mm2/s": 1e-6, "cSt": 1e-6, "St": 1e-4},
+    "diffusivity": {"m2/s": 1.0, "cm2/s": 1e-4, "mm2/s": 1e-6},  # D116, Fick's law
     "thermal_conductivity": {"W/(m*K)": 1.0, "W/mK": 1.0},
     "heat_transfer_coefficient": {"W/(m2*K)": 1.0, "W/m2K": 1.0},
     "thermal_resistance": {"K/W": 1.0, "C/W": 1.0},
@@ -157,6 +158,7 @@ _KIND: dict[str, tuple[str, str, str]] = {
     "mass_flow_rate": ("a mass flow rate", "kg/s", "t/h"),
     "dynamic_viscosity": ("a dynamic viscosity", "Pa*s", "cP"),
     "kinematic_viscosity": ("a kinematic viscosity", "m2/s", "cSt"),
+    "diffusivity": ("a diffusion coefficient", "m2/s", "cm2/s"),
     "thermal_conductivity": ("a thermal conductivity", "W/(m*K)", "W/(m*K)"),
     "heat_transfer_coefficient": ("a heat transfer coefficient", "W/(m2*K)", "W/(m2*K)"),
     "thermal_resistance": ("a thermal resistance", "K/W", "K/W"),

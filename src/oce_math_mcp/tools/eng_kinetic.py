@@ -16,6 +16,8 @@ Sources: Wikipedia pages "Kinetic theory of gases", "Maxwell-Boltzmann distribut
 - Graham's law: rate_1 / rate_2 = sqrt(M_2 / M_1); M_2 = (rate_1 / rate_2)^2 M_1.
 - Equipartition: 1/2 k T per kinetic degree of freedom; monatomic f = 3, diatomic 5, polyatomic 6 (the page:
   vibrational modes need quantum statistics and are not included unless counted in f).
+- Diffusion (D116, section "Diffusion coefficient and diffusion flux"): Fick's first law J = -D dn/dx, with D
+  given or, for a dilute gas, D_0 = (1/3) <v> l from the mean free path above.
 """
 
 from __future__ import annotations
@@ -53,7 +55,9 @@ _MODES: dict[str, set[str]] = {
     "wall_flux": {"T", "p", "A"} | _MOLECULE,
     "graham": {"M1", "M2", "rate_ratio"},
     "equipartition": {"dof", "gas", "T", "n_mol"},
+    "diffusion": {"D", "dn_dx", "T", "p", "d", "sigma", "mu"} | _MOLECULE,
 }
+_GAS_KEYS = ("T", "p", "d", "sigma", "mu", "m", "M_molar")
 _GAS_DOF = {"monatomic": 3, "diatomic": 5, "polyatomic": 6}
 _UNITS = {
     "m": "kg",
@@ -80,6 +84,8 @@ _UNITS = {
     "z": "1/s",
     "tau": "s",
     "Kn": "1",
+    "D": "m2/s",
+    "dn_dx": "1/m4",
     "J": "1/(m2*s)",
     "Phi": "1/s",
     "mdot": "kg/s",
@@ -138,6 +144,7 @@ def _kinetic(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         "wall_flux": _mode_flux,
         "graham": _mode_graham,
         "equipartition": _mode_equipartition,
+        "diffusion": _mode_diffusion,
     }[mode](p, ctx)
     ctx.units = units_for(out, _UNITS)
     return out
@@ -221,26 +228,31 @@ def _mode_distribution(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     return out
 
 
-def _mode_mfp(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
-    t, pressure = _kelvin(p), need(p, "p", "pressure")
-    n = pressure / (K_B * t)
-    out: dict[str, Any] = {"n": n}
+def _free_path(p: dict[str, Any], t: float, pressure: float) -> tuple[float, float | None, str]:
+    """Mean free path, cross section (None with the viscosity mu) and formula."""
     how = one_of(
         p, ("d", "sigma", "mu"), "the size of the molecules (d, sigma or the viscosity mu)"
     )
     if how == "mu":
         m = _molecule(p)
-        out["ell"] = (
-            need(p, "mu", "dynamic_viscosity") / pressure * math.sqrt(math.pi * K_B * t / (2 * m))
-        )
-        ctx.formula = "l = (mu / p) sqrt(pi k T / (2 m)) (hard spheres with the same viscosity)"
-    else:
-        sigma = math.pi * need(p, "d", "length") ** 2 if how == "d" else need(p, "sigma", "area")
+        ell = need(p, "mu", "dynamic_viscosity") / pressure * math.sqrt(math.pi * K_B * t / (2 * m))
+        return ell, None, "l = (mu / p) sqrt(pi k T / (2 m)) (hard spheres with the same viscosity)"
+    sigma = math.pi * need(p, "d", "length") ** 2 if how == "d" else need(p, "sigma", "area")
+    ell = 1 / (math.sqrt(2) * (pressure / (K_B * t)) * sigma)
+    return (
+        ell,
+        sigma,
+        "n = p / (k T), sigma = pi d^2, l = 1 / (sqrt 2 n sigma) = k T / (sqrt 2 pi d^2 p)",
+    )
+
+
+def _mode_mfp(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
+    t, pressure = _kelvin(p), need(p, "p", "pressure")
+    out: dict[str, Any] = {"n": pressure / (K_B * t)}
+    ell, sigma, ctx.formula = _free_path(p, t, pressure)
+    if sigma is not None:
         out["sigma"] = sigma
-        out["ell"] = 1 / (math.sqrt(2) * n * sigma)
-        ctx.formula = (
-            "n = p / (k T), sigma = pi d^2, l = 1 / (sqrt 2 n sigma) = k T / (sqrt 2 pi d^2 p)"
-        )
+    out["ell"] = ell
     if p.get("m") is not None or p.get("M_molar") is not None:
         out["v_mean"] = _speeds(_molecule(p), t)["v_mean"]
         out["z"] = out["v_mean"] / out["ell"]
@@ -316,5 +328,36 @@ def _mode_equipartition(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     ctx.formatted = (
         f"Equipartition with {f} degrees of freedom: Cv = {fmt_sig(out['Cv_molar'], 6)} J/(mol K), "
         f"gamma = {fmt_sig(out['gamma'], 6)}."
+    )
+    return out
+
+
+def _mode_diffusion(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
+    """D116: Fick's first law J = -D dn/dx, with D given or the dilute-gas D = (1/3) <v> l."""
+    grad = need(p, "dn_dx", None, positive=False)
+    out: dict[str, Any]
+    if p.get("D") is not None:
+        given = [k for k in _GAS_KEYS if p.get(k) is not None]
+        if given:
+            raise ToolError(
+                "INVALID_ARGUMENT",
+                f"Give D, or the gas ({', '.join(_GAS_KEYS)}) for the kinetic D, not both: "
+                f"{', '.join(given)} given with D.",
+            )
+        dc = need(p, "D", "diffusivity")
+        out = {"D": dc}
+        ctx.formula = "J = -D dn/dx (Fick's first law)"
+    else:
+        t, pressure = _kelvin(p), need(p, "p", "pressure")
+        ell, _, formula = _free_path(p, t, pressure)
+        v_mean = _speeds(_molecule(p), t)["v_mean"]
+        dc = ell * v_mean / 3
+        out = {"ell": ell, "v_mean": v_mean, "D": dc}
+        ctx.formula = f"{formula}; D = (1/3) <v> l (dilute gas); J = -D dn/dx (Fick's first law)"
+    out["dn_dx"] = grad
+    out["J"] = -dc * grad
+    ctx.formatted = (
+        f"Diffusion flux J = {fmt_sig(out['J'], 6)} per m2 per s with D = {fmt_sig(dc, 6)} m2/s "
+        "(a gradient in mol/m4 gives J in mol/(m2 s))."
     )
     return out

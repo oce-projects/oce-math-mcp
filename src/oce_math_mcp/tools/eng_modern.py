@@ -2,6 +2,8 @@
 
 CODATA 2022 constants (`constants.py`). Exact relativistic formulas: no classical
 approximation, which stays in the result only for comparison (`*_classical`).
+D116, mode `cherenkov` (page "Cherenkov radiation", section "Emission angle"): cos theta = 1 / (n beta),
+emission only for beta > 1 / n; threshold gamma = 1 / sqrt(1 - 1/n^2) and kinetic energy (gamma - 1) m c^2.
 """
 
 from __future__ import annotations
@@ -93,6 +95,7 @@ _MP = {
     "blackbody": {"T", "wavelength", "wavelength1", "wavelength2", "emissivity", "area"},
     "uncertainty": {"dx", "dp", "dE", "dt", "particle", "m"},
     "angular_momentum": {"l", "s", "n", "j", "B"},
+    "cherenkov": {"n", "beta", "v", "kinetic_energy", "p", "particle", "m"},
 }
 _SERIES = {1: "Lyman", 2: "Balmer", 3: "Paschen", 4: "Brackett", 5: "Pfund", 6: "Humphreys"}
 
@@ -142,6 +145,7 @@ def _photon_energy(p: dict[str, Any], keys: tuple[str, str, str], what: str) -> 
         "s",
         "j",
         "B",
+        "beta",
     ),
 )
 def _modern_physics(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
@@ -156,12 +160,19 @@ def _modern_physics(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         "blackbody": _blackbody,
         "uncertainty": _uncertainty,
         "angular_momentum": _angular_momentum,
+        "cherenkov": _cherenkov,
     }[mode](p, ctx)
     ctx.units = units_for(out, _UNITS)
     return out
 
 
 _UNITS = {
+    "theta_deg": "deg",
+    "theta_max_deg": "deg",
+    "beta_threshold": "1",
+    "v_threshold": "m/s",
+    "gamma_threshold": "1",
+    "kinetic_threshold_eV": "eV",
     "L": "J*s",
     "S": "J*s",
     "J": "J*s",
@@ -624,6 +635,68 @@ def _angular_momentum(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         f"l = {ell}, s = {fmt_sig(s)}: |L| = {fmt_sig(out['L'], 6)} J s, j = "
         f"{', '.join(fmt_sig(j) for j in js)}."
     )
+    return out
+
+
+def _cherenkov(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
+    """D116, page "Cherenkov radiation": cos theta = 1 / (n beta), emission only for beta > 1 / n."""
+    n = need(p, "n", None)
+    if n <= 1:
+        raise ToolError(
+            "INVALID_ARGUMENT",
+            "params.n (refractive index of the medium) must be > 1: the threshold is beta = 1/n.",
+        )
+    k = one_of(p, ("beta", "v", "kinetic_energy", "p"), "the motion (beta, v, kinetic_energy or p)")
+    has_mass = p.get("particle") is not None or p.get("m") is not None
+    m = _particle(p)[0] if has_mass else None
+    if k in ("kinetic_energy", "p") and m is None:
+        raise ToolError("INVALID_ARGUMENT", f"With {k} the mass is needed (particle or m).")
+    # gm1 = gamma - 1 kept apart, as in special_relativity (D78)
+    if k in ("beta", "v"):
+        beta = _beta_of(p, "v", "beta", signed=False)
+        gamma = 1 / math.sqrt((1 - beta) * (1 + beta))
+        gm1 = gamma * beta * (gamma * beta) / (gamma + 1)
+    else:
+        assert m is not None
+        mc2 = m * C**2
+        if k == "kinetic_energy":
+            gm1 = need(p, "kinetic_energy", "energy") / mc2
+        else:
+            q = need(p, "p", "momentum") * C / mc2
+            gm1 = q * (q / (math.hypot(q, 1.0) + 1))
+        gamma = 1 + gm1
+        beta = math.sqrt(gm1) * math.sqrt(gm1 + 2) / gamma
+    g_t = n / math.sqrt((n - 1) * (n + 1))  # 1 / sqrt(1 - 1/n^2)
+    emits = n * beta > 1
+    out: dict[str, Any] = {
+        "beta": beta,
+        "v": beta * C,
+        "gamma": gamma,
+        "emits": emits,
+        "theta_deg": math.degrees(math.acos(1 / (n * beta))) if emits else None,
+        "theta_max_deg": math.degrees(math.acos(1 / n)),
+        "beta_threshold": 1 / n,
+        "v_threshold": C / n,
+        "gamma_threshold": g_t,
+    }
+    ctx.formula = (
+        "cos theta = 1 / (n beta), emission for beta > 1/n; v_threshold = c / n; "
+        "gamma_threshold = 1 / sqrt(1 - 1/n^2)"
+    )
+    if m is not None:
+        mc2 = m * C**2
+        out["kinetic_energy_eV"] = gm1 * mc2 / E_CH
+        # gamma_t - 1 = (gamma_t^2 - 1) / (gamma_t + 1) with gamma_t^2 - 1 = 1 / (n^2 - 1)
+        out["kinetic_threshold_eV"] = mc2 / ((n - 1) * (n + 1) * (g_t + 1)) / E_CH
+        ctx.formula += "; K_threshold = (gamma_threshold - 1) m c^2"
+    if emits:
+        ctx.formatted = f"Cherenkov angle {fmt_sig(out['theta_deg'], 6)} deg (threshold beta = {fmt_sig(1 / n, 6)})."
+    else:
+        ctx.warn(
+            f"beta = {fmt_sig(beta, 6)} is not above the threshold 1/n = {fmt_sig(1 / n, 6)}: "
+            "no Cherenkov radiation."
+        )
+        ctx.formatted = f"No Cherenkov radiation: beta = {fmt_sig(beta, 6)} <= 1/n."
     return out
 
 

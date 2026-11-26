@@ -3,6 +3,8 @@ compressible flow. Formulas in the server, checked in the tests with independent
 
 Constants: g = 9.80665 m/s2 (standard gravity); dry air gamma = 1.4 and R = 287.05287 J/(kg K)
 (ISO 2533), the same as in area C.
+D116: for M >= 1 the isentropic and area-Mach modes give the half-angle of the Mach cone, mu = asin(1/M)
+(page "Mach wave").
 """
 
 from __future__ import annotations
@@ -593,6 +595,9 @@ def _compressible(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
             "rho/rho0 = (T/T0)^(1/(gamma-1)); "
             "A/A* = (1/M) [2/(gamma+1) (1 + (gamma-1)/2 M^2)]^((gamma+1)/(2(gamma-1)))"
         )
+        if M >= 1:  # D116: half-angle of the Mach cone ("Mach wave")
+            out["mach_angle_deg"] = math.degrees(math.asin(1 / M))
+            ctx.formula += "; Mach angle mu = asin(1/M) for M >= 1"
         T0 = temperature(p, "T0", need=False)
         p0 = qty(p, "p0", "pressure", need=False)
         if T0 is not None:
@@ -657,6 +662,7 @@ def _compressible(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
             "p_p0": "1",
             "rho_rho0": "1",
             "A_Astar": "1",
+            "mach_angle_deg": "deg",
             "T": "K",
             "a": "m/s",
             "V": "m/s",

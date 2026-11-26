@@ -1545,6 +1545,7 @@ def _polynomial(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
 
 
 # ------------------------------------------------------------------ thermodynamic relations (D98)
+# D116: Joule-Thomson coefficient mu_JT = (dT/dp)_H for A, G, U and H (page "Joule-Thomson effect").
 
 # natural variables of each potential; "eos" is an equation of state p(V, T)
 _THERMO_VARS: dict[str, tuple[str, ...]] = {
@@ -1577,7 +1578,10 @@ def _thermo_quantities(
         alpha = kappa * D(p, T)
         q = {"S": S, "p": p, "U": U, "H": U + p * V, "G": f + p * V, "C_V": CV}
         q.update({"C_p": CV + T * V * alpha**2 / kappa, "kappa_T": kappa, "alpha": alpha})
+        # D116: Joule-Thomson coefficient (dT/dp)_H = V (alpha T - 1) / C_p ("Joule-Thomson effect")
+        q["mu_JT"] = V * (T * alpha - 1) / q["C_p"]
         rels = [
+            ("mu_JT = -(dH/dp)_T / C_p", q["mu_JT"], -(D(q["H"], V) / D(p, V)) / q["C_p"]),
             ("(dS/dV)_T = (dp/dT)_V", D(S, V), D(p, T)),
             ("U = -T^2 (d(A/T)/dT)_V", U, -(T**2) * D(f / T, T)),
             ("G = -V^2 (d(A/V)/dV)_T", f + p * V, -(V**2) * D(f / V, V)),
@@ -1595,7 +1599,9 @@ def _thermo_quantities(
         alpha = D(V, T) / V
         q = {"S": S, "V": V, "H": H, "U": H - P * V, "A": f - P * V, "C_p": Cp}
         q.update({"C_V": Cp - T * V * alpha**2 / kappa, "kappa_T": kappa, "alpha": alpha})
+        q["mu_JT"] = (T * D(V, T) - V) / Cp  # D116
         rels = [
+            ("mu_JT = -(dH/dp)_T / C_p", q["mu_JT"], -D(H, P) / Cp),
             ("-(dS/dp)_T = (dV/dT)_p", -D(S, P), D(V, T)),
             ("H = -T^2 (d(G/T)/dT)_p", H, -(T**2) * D(f / T, T)),
             ("(dH/dp)_T = V - T (dV/dT)_p", D(H, P), V - T * D(V, T)),
@@ -1608,7 +1614,15 @@ def _thermo_quantities(
         T, p = D(f, S), -D(f, V)
         q = {"T": T, "p": p, "H": f + p * V, "A": f - T * S, "G": f + p * V - T * S}
         q["C_V"] = T / D(T, S)
+        # D116: mu_JT = d(T, H)/d(p, H) with Jacobians in S and V; the relation uses d(T, p)/d(S, V)
+        H = q["H"]
+        q["mu_JT"] = (D(T, S) * D(H, V) - D(T, V) * D(H, S)) / (
+            D(p, S) * D(H, V) - D(p, V) * D(H, S)
+        )
+        tp = D(T, S) * D(p, V) - D(T, V) * D(p, S)
+        dv_dt, c_p = -D(p, S) / tp, T * D(p, V) / tp
         rels = [
+            ("mu_JT = (T (dV/dT)_p - V) / C_p", q["mu_JT"], (T * dv_dt - V) / c_p),
             ("(dT/dV)_S = -(dp/dS)_V", D(T, V), -D(p, S)),
             ("(dT/dV)_S = d2U/dSdV", D(T, V), D(f, S, V)),
             ("(dT/dS)_V = T/C_V", D(T, S), T / q["C_V"]),
@@ -1619,7 +1633,10 @@ def _thermo_quantities(
         T, V = D(f, S), D(f, P)
         U = f - P * V
         q = {"T": T, "V": V, "U": U, "G": f - T * S, "A": U - T * S, "C_p": T / D(T, S)}
+        # D116: (dT/dp)_H = (dT/dp)_S + (dT/dS)_p (dS/dp)_H with (dS/dp)_H = -V / T
+        q["mu_JT"] = D(T, P) - D(T, S) * V / T
         rels = [
+            ("mu_JT = (T (dV/dT)_p - V) / C_p", q["mu_JT"], (T * D(V, S) / D(T, S) - V) / q["C_p"]),
             ("(dT/dp)_S = (dV/dS)_p", D(T, P), D(V, S)),
             ("(dT/dp)_S = d2H/dSdp", D(T, P), D(f, S, P)),
             ("(dT/dS)_p = T/C_p", D(T, S), T / q["C_p"]),

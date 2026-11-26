@@ -4,7 +4,7 @@ electrochemistry.
 Atomic weights: CIAAW/IUPAC abridged table (`data/atomic_weights.json`, with the source and the hash
 of the files it was extracted from). Constants R and F: CODATA 2022 (`constants.py`). Concentrations in
 mol/L, also as a number without units (exception to the SI rule, D48). The chemical formula is read by a
-character parser: no eval.
+character parser: no eval. Ionic strength (D116, page "Ionic strength"): I = 1/2 sum c_i z_i^2.
 """
 
 from __future__ import annotations
@@ -592,16 +592,68 @@ _EC = {
     "nernst": {"E0", "n", "Q", "T"},
     "electrolysis": {"I", "t", "charge", "n", "formula", "M"},
     "gibbs": {"n", "E", "dG", "K", "T"},
+    "ionic_strength": {"ions"},
 }
+_IONS_MAX = 100
+
+
+def _ionic_strength(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
+    """D116, page "Ionic strength": I = 1/2 sum c_i z_i^2, concentrations in mol/L."""
+    ions = p.get("ions")
+    example = '{"ions": [[2, 0.1], [-1, 0.2]]}'
+    if not isinstance(ions, list) or not ions:
+        raise ToolError(
+            "INVALID_ARGUMENT",
+            "params.ions: a list of [z, c] pairs, z the charge number of the ion and c its "
+            "concentration (mol/L).",
+            example,
+        )
+    if len(ions) > _IONS_MAX:
+        raise ToolError("INVALID_ARGUMENT", f"params.ions: at most {_IONS_MAX} ions.")
+    terms: list[float] = []
+    charges: list[float] = []
+    sizes: list[float] = []
+    for i, ion in enumerate(ions):
+        if not isinstance(ion, list | tuple) or len(ion) != 2:
+            raise ToolError("INVALID_ARGUMENT", f"params.ions[{i}]: the form is [z, c].", example)
+        z, raw = ion
+        if (
+            isinstance(z, bool)
+            or not isinstance(z, int | float)
+            or not float(z).is_integer()
+            or z == 0
+        ):
+            raise ToolError(
+                "INVALID_ARGUMENT",
+                f"params.ions[{i}]: z (the charge number) must be a nonzero integer.",
+            )
+        key = f"ions[{i}].c"
+        c = need({key: raw}, key, "concentration")
+        terms.append(c * z * z)
+        charges.append(c * z)
+        sizes.append(c * abs(z))
+    strength = math.fsum(terms) / 2
+    charge = math.fsum(charges)
+    if abs(charge) > 1e-9 * math.fsum(sizes):
+        ctx.warn(
+            f"The ions are not electrically neutral: sum of z c = {charge:.6g} mol/L "
+            "(check the charges and the concentrations)."
+        )
+    ctx.formula = "I = 1/2 sum c_i z_i^2"
+    ctx.formatted = f"Ionic strength I = {fmt_float(strength, 6)} mol/L."
+    ctx.units = {"ionic_strength": "mol/L", "charge_sum": "mol/L"}
+    return {"ionic_strength": strength, "charge_sum": charge}
 
 
 @op(
     "electrochemistry",
-    ("mode", "E0", "n", "Q", "T", "I", "t", "charge", "formula", "M", "E", "dG", "K"),
+    ("mode", "E0", "n", "Q", "T", "I", "t", "charge", "formula", "M", "E", "dG", "K", "ions"),
 )
 def _electrochem(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     mode = choice(p, "mode", tuple(_EC))
     only(p, mode, _EC[mode])
+    if mode == "ionic_strength":
+        return _ionic_strength(p, ctx)
     n = integer(p, "n", 1)
     out: dict[str, Any]
     if mode == "electrolysis":

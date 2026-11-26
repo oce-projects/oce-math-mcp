@@ -266,8 +266,8 @@ pages), one group at a time.
   g(E) (the states below E_F hold exactly n), the page range of metal Fermi energies (2-10 eV; n =
   8.47e28 per m3 gives 7.03 eV) and mpmath occupation numbers at 60 digits from x = 1e-12 to 800.
   Mutation check: 32 changed lines out of 32 caught. Full suite 1,477 passed and 1 failed in 562.35 s (the real-REPL test of D103 got ok false from lean_check on a loaded machine; alone it passes in 98.07 s).
-- Gravitational waves of a circular binary (D113, spec 4.29.0): 3 of the 14 gaps of the measure of the 475
-  formulas (radiated power, orbital decay and time to coalescence), that were computed only when the model
+- Gravitational waves of a circular binary (D113, spec 4.29.0): 1 of the 14 gaps of the measure of the 475
+  formulas, with 3 of the 16 formulas (radiated power, orbital decay and time to coalescence), that were computed only when the model
   wrote the formula in `math_eval`. New mode `gw_inspiral` of `eng_calc.gravitation`: from `m1`, `m2` and
   the separation `r`, the power, the angular momentum and period loss, dr/dt, the time to coalescence, the
   orbital and wave frequencies, the chirp mass with df/dt, the orbital energy and v/c (quadrupole formula of
@@ -307,6 +307,21 @@ pages), one group at a time.
   to 600 s for the checks of the drawing and of the breaks; the time-limit tests give their own deadline to
   `plot.make`. Check: with a pytest plugin that makes `time.monotonic` run 50 times faster, the test fails
   without the fixture and the 37 tests pass with it.
+- Joule-Thomson coefficient, Mach angle, Cherenkov radiation, Fick's first law and ionic strength (D116, spec
+  4.32.0): 5 of the 14 gaps of the measure of the 475 formulas, the last decision of group A; with D112-D115
+  all 14 gaps (16 formulas) have an operation. `math_solve.thermo_relations` gives `mu_JT` = (dT/dp)_H from
+  A, G, U and H, with a relation computed by a second route; `eng_calc.compressible_flow` gives
+  `mach_angle_deg` = asin(1/M) for M >= 1; `modern_physics` mode `cherenkov` (n with beta, v, kinetic energy
+  or momentum): the angle, the threshold speed, gamma and kinetic energy, a warning below the threshold;
+  `kinetic_theory` mode `diffusion`: J = -D dn/dx with D given or the kinetic D = (1/3) <v> l;
+  `electrochemistry` mode `ionic_strength`: I = 1/2 sum c z^2 with a warning when the ions are not neutral.
+  New unit kind `diffusivity` (`m2/s`, `cm2/s`, `mm2/s`). Contract unchanged (208 operations). 21 tests in
+  `tests/test_jt_mach_cherenkov_fick_ionic_d116.py`: the 5 values of the measure, the van der Waals gas from
+  A and from U against the page formula and its low-pressure limit, the covolume gas from G and H, Cherenkov
+  electrons in water (threshold about 0.26 MeV), the kinetic D against the mean free path, the ionic
+  strength example of the page (0.17 M). The D113 entry above said "3 of the 14 gaps": it is 1 gap with 3
+  formulas, corrected.
+  Mutation check: 50 changed lines out of 50 caught. Full suite 1,550 passed in 287.79 s.
 - Linux tested (Ubuntu 22.04, x86_64, Python 3.12.13, uv 0.11.20): `--self-check` ok in 8.65 s; suite
   1,026 passed and 7 skipped in 44.91 s. macOS is not tested.
 
