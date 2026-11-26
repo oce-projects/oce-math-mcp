@@ -162,6 +162,17 @@ pages), one group at a time.
   warm-up and shutdown in the server, install) and 2 with Lean. The older `lean_check` tests now take less
   than 0.23 s each. Mutation check: 23 changed lines out of 24 caught; the one left (`ensure_ascii=True`,
   surrogate pairs for 𝔸) gives the same answers, because the REPL reads both forms.
+- Ten more functions in the parser and exact sums in the numerical evaluation (D104, spec 4.20.0): `sech`,
+  `csch`, `acoth`, `asech`, `acsch`, `asec`, `acsc` and the orthogonal polynomials `legendre(n, x)`,
+  `hermite(n, x)`, `laguerre(n, x)` (expanded for an integer degree, at most 200; a symbolic degree stays) in
+  every expression field. Measuring showed that the expanded polynomials lost their digits in floating point
+  (legendre(100, x): error 9.2e19 times its largest value on [-1, 1]); `compile_expr` and `compile_mp` now
+  compute a sum that cancels again with exact rationals and round it once, a polynomial in one variable
+  through Horner on integers. Error at degree 100 now below 1e-14; `x**2 - 2*x + 1` at 1 + 1e-8 gives 1.0e-16
+  instead of 0.0; a short sum costs at most 2.8 microseconds more. `math_numeric.quad` of
+  `legendre(200, x)**2` takes 3.23 s. The function table of the spec now lists every name `math_eval` reads
+  (43 were missing). 29 tests in `tests/test_parser_functions_d104.py` against mpmath at 30-60 digits, the
+  orthogonality integrals and numpy's Gauss-Legendre nodes. Mutation check: 23 changed lines out of 23 caught.
 - Linux tested (Ubuntu 22.04, x86_64, Python 3.12.13, uv 0.11.20): `--self-check` ok in 8.65 s; suite
   1,026 passed and 7 skipped in 44.91 s. macOS is not tested.
 

@@ -669,8 +669,8 @@ def _polyroots(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
             "The expression is not a polynomial in the variable.",
             "x**3 - 2*x + 1",
         ) from None
-    if len(coeffs) - 1 > 200:
-        raise ToolError("LIMIT_EXCEEDED", "Maximum degree 200.")
+    if len(coeffs) - 1 > limits.POLY_DEGREE_MAX:
+        raise ToolError("LIMIT_EXCEEDED", f"Maximum degree {limits.POLY_DEGREE_MAX}.")
     dps = d + 10
     mpmath.mp.dps = dps
     cm = [to_mp(c, dps) for c in coeffs]

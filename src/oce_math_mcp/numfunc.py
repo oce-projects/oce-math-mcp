@@ -1,14 +1,138 @@
-"""From a SymPy expression to a numerical Python function, without lambdify (which uses exec)."""
+"""From a SymPy expression to a numerical Python function, without lambdify (which uses exec).
+
+D104: a sum whose terms cancel (sum of |terms| more than _CANCEL times |sum|) is computed again with exact
+rationals from the same inputs and rounded once. Measured on 2026-11-26 before D104: the expanded
+legendre(100, x) had an error 9.2e19 times its largest value on [-1, 1] in floating point.
+"""
 
 from __future__ import annotations
 
 import math
 from collections.abc import Callable, Sequence
-from typing import Any
+from fractions import Fraction
+from typing import Any, cast
 
 import sympy as sp
 
 from .errors import ToolError
+
+_CANCEL = 100.0  # digits lost above about 2: the sum is recomputed exactly
+_EXACT_POW_MAX = 256  # larger integer powers enter the exact sum as their rounded value
+
+
+def _sech(v: float) -> float:
+    a = abs(v)  # 2 e^-a / (1 + e^-2a): no overflow of cosh for |v| > 710
+    return 2.0 * math.exp(-a) / (1.0 + math.exp(-2.0 * a))
+
+
+def _csch(v: float) -> float:
+    a = abs(v)  # expm1 keeps the digits for small |v|; v = 0 is a pole (ZeroDivisionError -> nan)
+    return math.copysign(2.0 * math.exp(-a) / -math.expm1(-2.0 * a), v)
+
+
+def _ratio(v: Any) -> tuple[int, int]:
+    """Exact value of a float, an int or an mpf as numerator and denominator (nan, inf, complex raise)."""
+    if isinstance(v, float):
+        return v.as_integer_ratio()
+    if isinstance(v, int):
+        return v, 1
+    import mpmath
+
+    if isinstance(v, mpmath.mpf) and mpmath.isfinite(v):
+        man, exp = v.man_exp
+        return (int(man) << exp, 1) if exp >= 0 else (int(man), 1 << -exp)
+    raise TypeError(f"no exact value for {v!r}")
+
+
+Leaf = Callable[[Any], Callable[[Sequence[Any]], Any]]
+
+
+def _one_variable_poly(e: Any) -> tuple[Any, list[int], int] | None:
+    """(generator, integer coefficients from the highest degree, common denominator) of a polynomial
+    with rational coefficients in one generator (x, cos(t), ...); None otherwise or above the degree limit."""
+    from .limits import POLY_DEGREE_MAX
+
+    for pw in e.atoms(sp.Pow):
+        if pw.exp.is_Integer and abs(int(pw.exp)) > POLY_DEGREE_MAX:
+            return None
+    try:
+        poly = sp.Poly(e)
+    except sp.PolynomialError:
+        return None
+    if len(poly.gens) != 1 or poly.get_domain() not in (sp.ZZ, sp.QQ):
+        return None
+    pq = [(int(r.p), int(r.q)) for r in (cast(Any, sp.Rational(c)) for c in poly.all_coeffs())]
+    den = int(sp.ilcm(*[q for _p, q in pq])) if len(pq) > 1 else pq[0][1]
+    return poly.gens[0], [p_ * (den // q) for p_, q in pq], den
+
+
+def _exact_sum(
+    e: Any, index: dict[sp.Symbol, int], leaf: Leaf
+) -> Callable[[Sequence[Any]], tuple[int, int]]:
+    """Exact value of the sum e as (numerator, denominator), rounded once by the caller.
+
+    A polynomial in one generator goes through Horner on integers (no reduction at every step: legendre(200, x)
+    with Fraction took 57 s in a quad). Otherwise +, *, integer powers, symbols and rationals are exact Fractions.
+    Any other sub-expression (sin(x), pi, a large power) enters with the value of its numerical closure
+    `leaf(sub)`, taken as an exact rational: only the sum is made exact, not the functions.
+    """
+    found = _one_variable_poly(e)
+    if found is not None:
+        gen, coeffs, den = found
+        if isinstance(gen, sp.Symbol) and gen in index:
+            i = index[gen]
+            value: Callable[[Sequence[Any]], Any] = lambda a: a[i]  # noqa: E731
+        else:
+            value = leaf(gen)
+        degree = len(coeffs) - 1
+
+        def horner(a: Sequence[Any]) -> tuple[int, int]:
+            m, q = _ratio(value(a))
+            acc, qpow = coeffs[0], 1
+            for c in coeffs[1:]:  # sum c_k m^k q^(n-k)
+                qpow *= q
+                acc = acc * m + c * qpow
+            return acc, den * q**degree
+
+        return horner
+
+    def build(node: Any) -> Callable[[Sequence[Any]], Fraction]:
+        if isinstance(node, sp.Symbol) and node in index:
+            i = index[node]
+            return lambda a: Fraction(*_ratio(a[i]))
+        if isinstance(node, sp.Rational):
+            c = Fraction(int(node.p), int(node.q))
+            return lambda a: c
+        if isinstance(node, sp.Add | sp.Mul):
+            fs = [build(arg) for arg in node.args]
+            if isinstance(node, sp.Add):
+                return lambda a: sum((f(a) for f in fs), Fraction(0))
+
+            def mul(a: Sequence[Any]) -> Fraction:
+                out = Fraction(1)
+                for f in fs:
+                    out *= f(a)
+                return out
+
+            return mul
+        if (
+            isinstance(node, sp.Pow)
+            and node.exp.is_Integer
+            and abs(int(node.exp)) <= _EXACT_POW_MAX
+        ):
+            fb, k = build(node.base), int(node.exp)
+            return lambda a: fb(a) ** k
+        g = leaf(node)
+        return lambda a: Fraction(*_ratio(g(a)))
+
+    total = build(e)
+
+    def generic(a: Sequence[Any]) -> tuple[int, int]:
+        q = total(a)
+        return q.numerator, q.denominator
+
+    return generic
+
 
 _F1: dict[Any, Callable[[float], float]] = {
     sp.sin: math.sin,
@@ -35,6 +159,14 @@ _F1: dict[Any, Callable[[float], float]] = {
     sp.sec: lambda v: 1 / math.cos(v),
     sp.csc: lambda v: 1 / math.sin(v),
     sp.cot: lambda v: 1 / math.tan(v),
+    # D104: the inverse functions through 1/v; outside the real domain math raises and the value is nan.
+    sp.sech: _sech,
+    sp.csch: _csch,
+    sp.acoth: lambda v: math.atanh(1 / v),
+    sp.asech: lambda v: math.acosh(1 / v),
+    sp.acsch: lambda v: math.asinh(1 / v),
+    sp.asec: lambda v: math.acos(1 / v),
+    sp.acsc: lambda v: math.asin(1 / v),
     sp.sign: lambda v: (v > 0) - (v < 0),
     sp.Heaviside: lambda v: 1.0 if v > 0 else (0.5 if v == 0 else 0.0),
     sp.factorial: lambda v: math.gamma(v + 1),
@@ -69,7 +201,25 @@ def compile_expr(expr: Any, symbols: Sequence[sp.Symbol]) -> Callable[..., float
             return lambda a: fv
         if isinstance(e, sp.Add):
             fs = [build(x) for x in e.args]
-            return lambda a: math.fsum(f(a) for f in fs)
+            exact: list[
+                Callable[[Sequence[Any]], tuple[int, int]]
+            ] = []  # built at the first cancellation
+
+            def add(a: Sequence[float], node: Any = e) -> float:
+                terms = [f(a) for f in fs]
+                s = math.fsum(terms)
+                size = math.fsum(abs(v) for v in terms)
+                if math.isfinite(size) and size > _CANCEL * abs(s):
+                    if not exact:
+                        exact.append(_exact_sum(node, index, build))
+                    try:
+                        num, den = exact[0](a)
+                    except (ValueError, ZeroDivisionError, TypeError, OverflowError):
+                        return s
+                    return num / den  # int / int rounds once; OverflowError -> nan in call()
+                return s
+
+            return add
         if isinstance(e, sp.Mul):
             fs = [build(x) for x in e.args]
 
@@ -131,6 +281,13 @@ _MP1 = {
     sp.asinh: "asinh",
     sp.acosh: "acosh",
     sp.atanh: "atanh",
+    sp.sech: "sech",
+    sp.csch: "csch",
+    sp.acoth: "acoth",
+    sp.asech: "asech",
+    sp.acsch: "acsch",
+    sp.asec: "asec",
+    sp.acsc: "acsc",
     sp.exp: "exp",
     sp.log: "log",
     sp.Abs: "fabs",
@@ -187,7 +344,24 @@ def compile_mp(expr: Any, symbols: Sequence[sp.Symbol], dps: int) -> Callable[..
             return lambda a: c
         if isinstance(e, sp.Add):
             fs = [build(x) for x in e.args]
-            return lambda a: mpmath.fsum(f(a) for f in fs)
+            exact: list[Callable[[Sequence[Any]], tuple[int, int]]] = []
+
+            def add(a: Sequence[Any], node: Any = e) -> Any:
+                terms = [f(a) for f in fs]
+                s = mpmath.fsum(terms)
+                if all(isinstance(v, mpmath.mpf) for v in terms):
+                    size = mpmath.fsum(terms, absolute=True)
+                    if mpmath.isfinite(size) and size > _CANCEL * abs(s):
+                        if not exact:
+                            exact.append(_exact_sum(node, index, build))
+                        try:
+                            num, den = exact[0](a)
+                        except (ValueError, ZeroDivisionError, TypeError, OverflowError):
+                            return s
+                        return mpmath.mpf(num) / den
+                return s
+
+            return add
         if isinstance(e, sp.Mul):
             fs = [build(x) for x in e.args]
             return lambda a: mpmath.fprod(f(a) for f in fs)

@@ -1,6 +1,6 @@
 # `oce-math-mcp` V3 specification: final tool catalogue
 
-Spec version: **4.19.0** of 2026-11-26 (3.1.0: 3D drawing operations in `geom3d_calc` and the
+Spec version: **4.20.0** of 2026-11-26 (3.1.0: 3D drawing operations in `geom3d_calc` and the
 `show_steps` field, decisions D22 and D23; 3.2.0: `date_calc` with recurring events, time zones, real
 hours between two instants, age in months and weeks, decision D24; 3.3.0: tool status in server
 0.1.0, `lean_check` with code filter and axiom check, decision D36; 3.4.0:
@@ -30,7 +30,7 @@ decision D47;
 3.26.0: catenary cables and journal bearings, decision D58;
 3.27.0: 2D and 3D trusses, decision D59;
 3.28.0: torsion of non-circular sections, decision D60;
-4.0.0: everything in English, decision D61 (breaking: `formatted_it` -> `formatted`, step `text_it` -> `text`, English separators and ISO dates in texts, `vat`/`vat_add`/`vat_remove`/`withholding` in `math_eval`, no `weekday_it` in `date_calc`, English text values in `eng_calc`, no Italian particle aliases); 4.1.0: geometric and wave optics, decision D64; 4.2.0: practical electronics, decision D65; 4.3.0: friction in simple machines, decision D66; 4.4.0: electric machines, decision D67; 4.5.0: thin plates, decision D68; 4.6.0: continuous beams, decision D69; 4.7.0: local losses, decision D70; 4.8.0: stress concentration at holes, decision D71; 4.9.0: rotor balancing, decision D72; 4.10.0: rolling without slipping, decision D73; 4.10.1: finite results in eng_calc, decision D74; 4.11.0: kinetic theory of gases, decision D87; 4.12.0: Newtonian gravitation, decision D88; 4.12.1: `gravitation.rotating_body` towards the equator in both hemispheres, decision D89; 4.13.0: corrections of the audit of the repository, decisions D90-D97; 4.14.0: statistical mechanics and thermodynamic relations, decision D98; 4.15.0: quantum angular momentum and wavefunctions, decision D99; 4.16.0: general wave functions and modulation, decision D100; 4.17.0: `check_solution` puts the solution in before the derivatives, decision D101; 4.18.0: Lagrangian mechanics, central forces and reference frames, decision D102; 4.19.0: `lean_check` through a persistent Lean REPL with Mathlib loaded once, decision D103). Server: `oce-math-mcp` (package `oce_math_mcp`).
+4.0.0: everything in English, decision D61 (breaking: `formatted_it` -> `formatted`, step `text_it` -> `text`, English separators and ISO dates in texts, `vat`/`vat_add`/`vat_remove`/`withholding` in `math_eval`, no `weekday_it` in `date_calc`, English text values in `eng_calc`, no Italian particle aliases); 4.1.0: geometric and wave optics, decision D64; 4.2.0: practical electronics, decision D65; 4.3.0: friction in simple machines, decision D66; 4.4.0: electric machines, decision D67; 4.5.0: thin plates, decision D68; 4.6.0: continuous beams, decision D69; 4.7.0: local losses, decision D70; 4.8.0: stress concentration at holes, decision D71; 4.9.0: rotor balancing, decision D72; 4.10.0: rolling without slipping, decision D73; 4.10.1: finite results in eng_calc, decision D74; 4.11.0: kinetic theory of gases, decision D87; 4.12.0: Newtonian gravitation, decision D88; 4.12.1: `gravitation.rotating_body` towards the equator in both hemispheres, decision D89; 4.13.0: corrections of the audit of the repository, decisions D90-D97; 4.14.0: statistical mechanics and thermodynamic relations, decision D98; 4.15.0: quantum angular momentum and wavefunctions, decision D99; 4.16.0: general wave functions and modulation, decision D100; 4.17.0: `check_solution` puts the solution in before the derivatives, decision D101; 4.18.0: Lagrangian mechanics, central forces and reference frames, decision D102; 4.19.0: `lean_check` through a persistent Lean REPL with Mathlib loaded once, decision D103; 4.20.0: `sech`, `csch`, `acoth`, `asech`, `acsch`, `asec`, `acsc`, `legendre`, `hermite`, `laguerre` and exact sums in the numerical evaluation, decision D104). Server: `oce-math-mcp` (package `oce_math_mcp`).
 
 **This spec replaces V2** (`SPEC_OCE_MATH_MCP_E_PIANO_V2.md`) for the tool catalogue and for the
 JSON schemas. The decisions behind it are D13-D21 in `docs/DECISIONS.md`.
@@ -218,18 +218,30 @@ Allowed functions:
 
 | Group | Functions |
 |---|---|
-| Basic | `abs`, `floor`, `ceil`, `round(x, n)` (half up), `min`, `max`, `sum`, `prod`, `sign` |
+| Basic | `abs` (also `Abs`), `floor`, `ceil` (also `ceiling`), `round(x, n)` (half up), `min`, `max` (also `Min`, `Max`), `sum`, `prod`, `sign`, `Mod(a, m)`, `Heaviside`, `DiracDelta` |
 | Powers and roots | `sqrt`, `cbrt`, `root(x, n)`, `exp` |
 | Logarithms | `log(x)` natural, `log(x, b)` base b, `ln`, `log10`, `log2` |
-| Trigonometry (radians) | `sin`, `cos`, `tan`, `cot`, `sec`, `csc`, `asin`, `acos`, `atan`, `atan2(y, x)` |
+| Trigonometry (radians) | `sin`, `cos`, `tan`, `cot`, `sec`, `csc`, `asin`, `acos`, `atan` (also `arcsin`, `arccos`, `arctan`), `acot`, `asec`, `acsc`, `atan2(y, x)` |
 | Trigonometry (degrees) | `sind`, `cosd`, `tand`, `asind`, `acosd`, `atand`, `deg(x)`, `rad(x)` |
-| Hyperbolic | `sinh`, `cosh`, `tanh`, `asinh`, `acosh`, `atanh` |
-| Combinatorics | `factorial`, `comb(n, k)`, `perm(n, k)`, `gcd`, `lcm`, `mod_inv(a, m)`, `mod(a, m)` |
+| Hyperbolic | `sinh`, `cosh`, `tanh`, `coth`, `sech`, `csch`, `asinh`, `acosh`, `atanh`, `acoth`, `asech`, `acsch` |
+| Complex numbers | `re`, `im`, `arg`, `conjugate` |
+| Combinatorics | `factorial`, `comb(n, k)` (also `binomial`), `perm(n, k)`, `gcd`, `lcm`, `mod_inv(a, m)`, `mod(a, m)`, `fibonacci`, `harmonic` |
+| Special functions | `gamma`, `beta`, `digamma`, `polygamma(n, x)`, `erf`, `erfc`, `zeta`, `LambertW`, `besselj(n, x)`, `bessely(n, x)`, `Si`, `Ci`, `Ei`, `li` |
+| Orthogonal polynomials (D104) | `legendre(n, x)`, `hermite(n, x)`, `laguerre(n, x)`: an integer degree gives the expanded polynomial (degree at most 200, `LIMIT_EXCEEDED` above), a symbolic degree stays as it is |
 | Statistics (lists) | `mean`, `median`, `mode`, `stdev` (sample), `pstdev`, `variance`, `pvariance`, `cov(x, y)`, `pearson(x, y)` |
 | Distributions | `norm_pdf(x, mu, sigma)`, `norm_cdf`, `norm_ppf(p, mu, sigma)`, `lognorm_pdf(x, mu, sigma)`, `lognorm_cdf`, `t_cdf(x, df)`, `t_ppf(p, df)`, `chi2_cdf(x, df)`, `chi2_ppf(p, df)`, `poisson_pmf(k, lam)`, `poisson_cdf`, `binom_pmf(k, n, p)`, `binom_cdf` |
 | Finance | `pmt(rate, nper, pv)` positive instalment for a positive loan; `npv(rate, flows)` with `flows[0]` at time 0; `irr(flows)`; `dcf(rate, flows, g)` flows from time 1 plus Gordon terminal value with growth `g`; `vat(net, rate=22)`, `vat_add`, `vat_remove(gross, rate=22)`, `withholding(net, rate=20)` (default rates: 22 % Italian VAT, 20 % Italian withholding tax) |
 | Units | `unit_convert(value, "from", "to")`: length, area, volume, mass, force, pressure (`Pa`, `kPa`, `MPa`, `bar`, `psi`, `atm`, `mmHg`), torque (`Nm`, `kgm`, `lbf_ft`), energy (`J`, `kJ`, `kWh`, `cal`, `kcal`, `BTU`), power (`W`, `kW`, `HP`, `CV`), temperature (`C`, `K`, `F`), angles, speed, flow rate. Exact defining factors (inch 0.0254 m, pound 0.45359237 kg) |
 | Constants (D47) | `const("name")`: CODATA 2022 physical constant as an exact number (rational of the decimal notation), by CODATA name (`const("Planck constant")`, any letter case) or short symbol: `c`, `h`, `hbar`, `e`, `N_A`, `k_B`, `R`, `F`, `G`, `g_n`, `m_e`, `m_p`, `m_n`, `m_u`, `u`, `m_d`, `m_alpha`, `alpha`, `R_inf`, `a_0`, `r_e`, `lambda_C`, `E_h`, `epsilon_0`, `mu_0`, `Z_0`, `sigma`, `b_wien`, `c1`, `c2`, `mu_B`, `mu_N`, `Phi_0`, `K_J`, `R_K`, `atm`, `eV`, `V_m`, `m_e_MeV`, `m_p_MeV`, `m_n_MeV`, `u_MeV`. Values in SI units (the `_MeV` ones in MeV); uncertainty with `eng_calc.physical_constant` |
+
+The same names are read by the expression fields of `math_solve`, `math_numeric`, `math_verify` and
+`number_theory` (without `round`, `sum`, `prod` and the `math_eval` groups for degrees, statistics,
+distributions, finance, units and constants; with `diff`). Numerical evaluation (D104): a sum whose terms cancel (sum of the absolute values more than 100
+times the absolute value of the sum) is computed again with exact rationals from the same inputs and rounded
+once; a polynomial in one variable goes through Horner on integers. Measured on 2026-11-26: before D104 the
+expanded `legendre(100, x)` had in floating point an error 9.2e19 times its largest value on [-1, 1], after
+D104 less than 1e-14 times; `x**2 - 2*x + 1` at x = 1 + 1e-8 gave 0.0, now 1.0e-16. The check costs at most
+2.8 microseconds per evaluation of a short sum.
 
 ---
 

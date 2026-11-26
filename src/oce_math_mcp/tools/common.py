@@ -19,6 +19,24 @@ def _diff(f: Any, *args: Any) -> Any:
     return sp.diff(f, *args)
 
 
+def _orthogonal(fn: Any) -> Any:
+    """legendre/hermite/laguerre(n, x) with the degree limit (D104).
+
+    With an integer degree SymPy gives the expanded polynomial; a symbolic degree stays as it is.
+    """
+
+    def call(deg: Any, arg: Any) -> Any:
+        if getattr(deg, "is_number", False) and deg.is_real and abs(deg) > limits.POLY_DEGREE_MAX:
+            raise ToolError(
+                "LIMIT_EXCEEDED",
+                f"{fn.__name__}: degree {deg}, the maximum is {limits.POLY_DEGREE_MAX}.",
+                f"{fn.__name__}(5, x)",
+            )
+        return fn(deg, arg)
+
+    return call
+
+
 SOLVE_FUNCS: dict[str, Any] = {
     "sin": sp.sin,
     "cos": sp.cos,
@@ -30,6 +48,8 @@ SOLVE_FUNCS: dict[str, Any] = {
     "acos": sp.acos,
     "atan": sp.atan,
     "acot": sp.acot,
+    "asec": sp.asec,
+    "acsc": sp.acsc,
     "arcsin": sp.asin,
     "arccos": sp.acos,
     "arctan": sp.atan,
@@ -38,9 +58,14 @@ SOLVE_FUNCS: dict[str, Any] = {
     "cosh": sp.cosh,
     "tanh": sp.tanh,
     "coth": sp.coth,
+    "sech": sp.sech,
+    "csch": sp.csch,
     "asinh": sp.asinh,
     "acosh": sp.acosh,
     "atanh": sp.atanh,
+    "acoth": sp.acoth,
+    "asech": sp.asech,
+    "acsch": sp.acsch,
     "exp": sp.exp,
     "log": _log,
     "ln": sp.log,
@@ -81,6 +106,9 @@ SOLVE_FUNCS: dict[str, Any] = {
     "LambertW": sp.LambertW,
     "besselj": sp.besselj,
     "bessely": sp.bessely,
+    "legendre": _orthogonal(sp.legendre),
+    "hermite": _orthogonal(sp.hermite),
+    "laguerre": _orthogonal(sp.laguerre),
     "Si": sp.Si,
     "Ci": sp.Ci,
     "Ei": sp.Ei,
