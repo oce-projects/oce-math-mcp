@@ -72,6 +72,57 @@ pages), one group at a time.
   - Messages (D97): twelve texts were still in Italian ("Modulo per zero.", "polyroots non converge.",
     "box o cylinder"...). The language test of D81 read only STRING tokens, and on Python 3.12 and later the
     text of an f-string is an FSTRING_MIDDLE token; now it reads both and looks for more Italian words.
+- Statistical mechanics and thermodynamic relations (D98, spec 4.14.0): the 60 formulas of the Termodinamica
+  sections still missing (Statistical physics, Thermodynamic potentials, Maxwell's relations, Quantum
+  properties). New operation `eng_calc.statistical_mechanics` (`eng_stat.py`) with 4 modes: `entropy` (Gibbs
+  from a list of probabilities, Boltzmann from Omega or ln Omega, bits, largest entropy), `entropy_heat`
+  (Q / T, C ln(T2 / T1) without cancellation, entropy generated with a reservoir), `maxwell_juttner`
+  (relativistic gas with mpmath: theta, <gamma>, mean energy, densities in p and in gamma) and
+  `partition_functions` (translational, vibrational and rotational Z of a molecule, U, C_V, S, A).
+  New operation `math_solve.thermo_relations`: from U(S, V), H(S, p), A(T, V), G(T, p), S(U, V, N), the grand
+  potential Omega(T, V, mu) or an equation of state p(V, T) it gives the other quantities (S, p, V, T, mu,
+  U, H, A, G, C_V, C_p, kappa_T, alpha), checks the Maxwell relations and the Gibbs-Helmholtz identities of
+  the page by two routes, and evaluates everything at a point with `at`. `eng_calc` 81 operations,
+  `math_solve` 35, contract 195. 20 tests in `tests/test_statistical_mechanics_d98.py` and
+  `tests/test_thermo_relations_d98.py` against mpmath sums, integrals and finite differences, the
+  Sackur-Tetrode equation, the NIST standard entropy of argon (154.846 J/(mol K)) and the van der Waals
+  closed forms. Mutation check: 78 changed lines out of 80 caught; the 2 left are the two checks
+  (`holds`, the numerical derivative) that cannot fail on correct code. Found while working: the
+  `show_steps` field of four tools said "steps in Italian" (they are in English since D61).
+- Quantum angular momentum and wavefunctions (D99, spec 4.15.0): the 23 formulas of Meccanica quantistica
+  still missing (intro, Wavefunctions, Angular momentum). New mode `modern_physics.angular_momentum`:
+  magnitudes of L, S and J, the allowed m_l, m_s, j and m_j, z components, orbital and spin magnetic moments
+  with the CODATA electron g factor, the Lande factor g_J and, with a field B, U = -mu_z B and the weak-field
+  Zeeman energies. New operation `math_solve.wavefunction`: probability density, probability current,
+  probability of a box (also several particles), momentum-space wavefunction and the Schroedinger check
+  (energy of an eigenstate, or the residual of the time-dependent equation). Its numerical checks use
+  mpmath in 1D and a fixed 48-point Gauss-Legendre grid per dimension up to 3D: scipy nquad needed 2,892,120
+  calls (8.09 s) for one 3D probability, beyond the 5 s limit of a call. `math_solve` 36 operations, contract
+  196. 15 tests in `tests/test_quantum_angular_momentum_d99.py` and `tests/test_wavefunction_d99.py` against
+  Clebsch-Gordan sums of sympy.physics.quantum.cg, closed forms (Gaussian packet, infinite well, harmonic
+  oscillator) and mpmath integrals. Mutation check: 43 changed lines out of 44 caught; the one left is the
+  tolerance of the multi-dimensional check, which matters only if SymPy's integral were wrong. Found while
+  working: `pytest.approx` keeps an absolute tolerance of 1e-12 when only `rel` is given, so comparisons of
+  small quantities (hbar, mu_B, energies in J) passed for any value; the tests of D98 and D99 now use abs=0.
+- General wave functions and modulation (D100, spec 4.16.0): the 22 formulas of Onde still missing
+  (Modulation indices, General wave functions). New operation `eng_calc.waves` with 7 modes: AM, FM and PM
+  modulation indices (with the Carson bandwidth), damped waves, superposition of plane waves (also the
+  page's double-sum amplitude), standing waves with nodes and antinodes, beats with phase and group
+  velocity, two waves out of phase, the KdV soliton (peak, full width at half maximum, area). The wave
+  equation and the KdV equation are checked by `math_verify.check_solution`; "n, m in Z" is text. Two
+  misprints of the page are corrected and noted in the code (the + omega2 t of the beats, the 2 A of the
+  out-of-phase sum). `eng_calc` 82 operations, contract 197. 11 tests in `tests/test_waves_d100.py` against
+  direct sums of the sine waves, mpmath integrals and roots and the FM broadcast value (Carson bandwidth
+  180 kHz for 75 kHz deviation and 15 kHz audio).
+- `math_verify.check_solution` with derivatives (D101, spec 4.17.0), found while testing D100: `diff(y, x)`
+  was taken on the bare symbol y (= 0) before the solution was put in, so `exp(-(x - 2 v t)^2)` passed the
+  wave equation with residual 0, and `diff(y, x) - y = 0` with y = x**2 or y = exp(x) said that the value of
+  x was missing. While the equations are read, each name of the solution now stands for its value; a
+  residual left only in the solution's own variables that is not zero gives `valid` false (residual
+  `x*(2 - x)` for y = x**2). A value that makes an equation undefined still gives the residual zoo (D90).
+  6 tests in `tests/test_check_solution_d101.py`. Mutation check of D100 and D101: 48 changed lines out of
+  48 caught (47 at the first run: simplifying the residual before looking for missing names was not
+  tested). One check of the KdV soliton takes 0.39 s, of the soliton travelling the wrong way 0.65 s.
 - Linux tested (Ubuntu 22.04, x86_64, Python 3.12.13, uv 0.11.20): `--self-check` ok in 8.65 s; suite
   1,026 passed and 7 skipped in 44.91 s. macOS is not tested.
 

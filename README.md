@@ -13,11 +13,11 @@
 A mathematics MCP (Model Context Protocol) server for local language models. It is built to train
 **Qwen3.6** and to let it work on calculations that a model cannot do in its head: exact
 arithmetic, symbolic algebra, calculus, number theory, numerical methods, answer checking, the
-Italian calendar, 3D geometry for CAD/CNC, formal proofs in Lean 4 and 80 engineering, physics
+Italian calendar, 3D geometry for CAD/CNC, formal proofs in Lean 4 and 82 engineering, physics
 and chemistry operations.
 
 **Status: version 0.4.0 (in progress).** All 10 tools answer.
-The contract defines 193 operations and all 193 are implemented (for `eng_calc` a test compares
+The contract defines 197 operations and all 197 are implemented (for `eng_calc` a test compares
 the contract with the code).
 
 ## Why

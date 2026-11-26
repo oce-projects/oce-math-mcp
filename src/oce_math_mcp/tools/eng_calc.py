@@ -26,7 +26,9 @@ eng_holes: stress concentration at holes, D71;
 eng_balance: unbalance and rotor balancing, D72;
 eng_rolling: rolling without slipping, D73;
 eng_kinetic: kinetic theory of gases, D87;
-eng_grav: Newtonian gravitation, D88); this module loads them and
+eng_grav: Newtonian gravitation, D88;
+eng_stat: statistical mechanics, D98;
+eng_waves: general wave functions and modulation, D100); this module loads them and
 exposes `handle` and `OPS`.
 """
 
@@ -62,12 +64,14 @@ from . import (
     eng_rolling,
     eng_sci,
     eng_solid,
+    eng_stat,
     eng_steam,
     eng_struct,
     eng_tables,
     eng_thermo,
     eng_torsion,
     eng_truss,
+    eng_waves,
 )
 from .eng_base import OPS, handle
 
@@ -102,11 +106,13 @@ __all__ = [
     "eng_rolling",
     "eng_sci",
     "eng_solid",
+    "eng_stat",
     "eng_steam",
     "eng_struct",
     "eng_tables",
     "eng_thermo",
     "eng_torsion",
     "eng_truss",
+    "eng_waves",
     "handle",
 ]

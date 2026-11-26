@@ -22,6 +22,8 @@ E_CH = 1.602176634e-19
 H = lookup("Planck constant")[1]
 HBAR = lookup("reduced Planck constant")[1]
 M_E = lookup("electron mass")[1]
+MU_B = lookup("Bohr magneton")[1]
+G_E = lookup("electron g factor")[1]
 RY_EV = lookup("Rydberg constant times hc in eV")[1]
 A0 = lookup("Bohr radius")[1]
 ALPHA = lookup("fine-structure constant")[1]
@@ -90,6 +92,7 @@ _MP = {
     "hydrogen_like": {"Z", "n", "n1", "n2", "wavelength", "nuclide"},
     "blackbody": {"T", "wavelength", "wavelength1", "wavelength2", "emissivity", "area"},
     "uncertainty": {"dx", "dp", "dE", "dt", "particle", "m"},
+    "angular_momentum": {"l", "s", "n", "j", "B"},
 }
 _SERIES = {1: "Lyman", 2: "Balmer", 3: "Paschen", 4: "Brackett", 5: "Pfund", 6: "Humphreys"}
 
@@ -135,6 +138,10 @@ def _photon_energy(p: dict[str, Any], keys: tuple[str, str, str], what: str) -> 
         "dp",
         "dE",
         "dt",
+        "l",
+        "s",
+        "j",
+        "B",
     ),
 )
 def _modern_physics(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
@@ -148,12 +155,32 @@ def _modern_physics(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         "hydrogen_like": _hydrogen,
         "blackbody": _blackbody,
         "uncertainty": _uncertainty,
+        "angular_momentum": _angular_momentum,
     }[mode](p, ctx)
     ctx.units = units_for(out, _UNITS)
     return out
 
 
 _UNITS = {
+    "L": "J*s",
+    "S": "J*s",
+    "J": "J*s",
+    "L_z": "J*s",
+    "S_z": "J*s",
+    "m_l": "1",
+    "m_s": "1",
+    "m_j": "1",
+    "j_values": "1",
+    "l_values": "1",
+    "g_J": "1",
+    "mu_L": "J/T",
+    "mu_S": "J/T",
+    "mu_l_z": "J/T",
+    "mu_s_z": "J/T",
+    "U_l": "J",
+    "U_s": "J",
+    "zeeman": "J",
+    "zeeman_eV": "eV",
     "wavelength": "m",
     "frequency": "Hz",
     "energy_J": "J",
@@ -503,6 +530,100 @@ def _uncertainty(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
             out["dv_min"] = dp / _particle(p)[0]
         ctx.formula = "Delta x Delta p >= hbar / 2"
     ctx.formatted = ", ".join(f"{a} = {fmt_sig(b)}" for a, b in out.items()) + "."
+    return out
+
+
+# ------------------------------------------------------------------ angular momentum (D99)
+
+_AM_MAX = 1000  # largest l and s: the lists have 2 l + 1 entries
+
+
+def _half_integer(p: dict[str, Any], key: str, default: float | None = None) -> float:
+    raw = p.get(key, default)
+    if raw is None:
+        raise ToolError("INVALID_ARGUMENT", f"Missing params.{key} (integer or half-integer).")
+    if isinstance(raw, bool) or not isinstance(raw, int | float) or not math.isfinite(raw):
+        raise ToolError("INVALID_ARGUMENT", f"params.{key} must be a number.")
+    if raw < 0 or not float(2 * raw).is_integer():
+        raise ToolError(
+            "INVALID_ARGUMENT", f"params.{key} must be an integer or a half-integer >= 0."
+        )
+    if raw > _AM_MAX:
+        raise ToolError("LIMIT_EXCEEDED", f"params.{key} is at most {_AM_MAX}.")
+    return float(raw)
+
+
+def _ladder(q: float) -> list[float]:
+    """-q, -q + 1, ..., q."""
+    return [-q + k for k in range(round(2 * q) + 1)]
+
+
+def _angular_momentum(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
+    ell = integer(p, "l", 0)
+    if ell > _AM_MAX:
+        raise ToolError("LIMIT_EXCEEDED", f"params.l is at most {_AM_MAX}.")
+    s = _half_integer(p, "s", 0.5)
+    out: dict[str, Any] = {}
+    if p.get("n") is not None:
+        n = integer(p, "n", 1)
+        if ell > n - 1:
+            raise ToolError(
+                "INVALID_ARGUMENT", f"With n = {n} the orbital number l is 0 ... {n - 1}."
+            )
+        out["l_values"] = list(range(n))
+    js = [abs(ell - s) + k for k in range(round(ell + s - abs(ell - s)) + 1)]
+    if p.get("j") is not None:
+        j_sel = _half_integer(p, "j")
+        if j_sel not in js:
+            raise ToolError(
+                "INVALID_ARGUMENT",
+                f"params.j must be one of {', '.join(fmt_sig(x) for x in js)} (|l - s| ... l + s).",
+            )
+        js = [j_sel]
+    g_s = abs(G_E)
+    g_j: list[float | None] = []
+    for j in js:
+        if j == 0:
+            g_j.append(None)  # no magnetic moment and no Zeeman shift
+            continue
+        jj, ss, ll = j * (j + 1), s * (s + 1), ell * (ell + 1)
+        g_j.append((jj - ss + ll) / (2 * jj) + g_s * (jj + ss - ll) / (2 * jj))
+    m_l, m_s = list(range(-ell, ell + 1)), _ladder(s)
+    out |= {
+        "L": HBAR * math.sqrt(ell * (ell + 1)),
+        "S": HBAR * math.sqrt(s * (s + 1)),
+        "m_l": m_l,
+        "m_s": m_s,
+        "L_z": [m * HBAR for m in m_l],
+        "S_z": [m * HBAR for m in m_s],
+        "j_values": js,
+        "J": [HBAR * math.sqrt(j * (j + 1)) for j in js],
+        "m_j": [_ladder(j) for j in js],
+        "g_J": g_j,
+        "mu_L": MU_B * math.sqrt(ell * (ell + 1)),
+        "mu_l_z": [-m * MU_B for m in m_l],
+        "mu_S": g_s * MU_B * math.sqrt(s * (s + 1)),
+        "mu_s_z": [G_E * m * MU_B for m in m_s],
+    }
+    ctx.formula = (
+        "|L| = hbar sqrt(l(l+1)), |S| = hbar sqrt(s(s+1)), |J| = hbar sqrt(j(j+1)), j = |l - s| ... l + s; "
+        "L_z = m_l hbar, S_z = m_s hbar; mu_l,z = -m_l mu_B, mu_s,z = g_e m_s mu_B (g_e < 0); "
+        "g_J = (j(j+1) - s(s+1) + l(l+1)) / (2 j(j+1)) + |g_e| (j(j+1) + s(s+1) - l(l+1)) / (2 j(j+1))"
+    )
+    if p.get("B") is not None:
+        b = need(p, "B", "magnetic_flux_density")
+        out["U_l"] = [m * MU_B * b for m in m_l]
+        out["U_s"] = [-G_E * m * MU_B * b for m in m_s]
+        out["zeeman"] = [
+            [0.0] if g is None else [g * m * MU_B * b for m in _ladder(j)]
+            for j, g in zip(js, g_j, strict=True)
+        ]
+        out["zeeman_eV"] = [[e / E_CH for e in row] for row in out["zeeman"]]
+        ctx.formula += "; U = -mu_z B; weak-field Zeeman E = g_J m_j mu_B B"
+    ctx.formatted = (
+        f"l = {ell}, s = {fmt_sig(s)}: |L| = {fmt_sig(out['L'], 6)} J s, j = "
+        f"{', '.join(fmt_sig(j) for j in js)}."
+    )
     return out
 
 

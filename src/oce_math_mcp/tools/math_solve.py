@@ -16,7 +16,7 @@ from sympy.integrals import manualintegrate as mi
 from ..envelope import Ctx
 from ..errors import ToolError
 from ..expr import Grammar, check_identifier, parse, parse_relation, split_equation, split_list
-from ..numfunc import compile_expr
+from ..numfunc import compile_expr, compile_mp
 from .common import (
     SOLVE_FUNCS,
     auto_vars,
@@ -1542,3 +1542,463 @@ def _polynomial(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         verified = _poly_verify("degree", p, None, x, P.degree())
     ctx.formatted = f"{pop}: {value}"
     return {"poly_op": pop, "value": value, "verified": verified}
+
+
+# ------------------------------------------------------------------ thermodynamic relations (D98)
+
+# natural variables of each potential; "eos" is an equation of state p(V, T)
+_THERMO_VARS: dict[str, tuple[str, ...]] = {
+    "U": ("S", "V"),
+    "H": ("S", "p"),
+    "A": ("T", "V"),
+    "G": ("T", "p"),
+    "S": ("U", "V", "N"),
+    "Omega": ("T", "V", "mu"),
+    "eos": ("V", "T"),
+}
+_THERMO_RESULTS = {"T", "p", "V", "S", "U", "H", "A", "G", "mu"}
+_THERMO_POSITIVE = {"T", "V", "p", "N"}
+_THERMO_NATURAL = {"A": "T,V", "G": "T,p", "U": "S,V", "H": "S,p"}
+
+
+def _thermo_quantities(
+    pot: str, f: Any, sy: dict[str, Any]
+) -> tuple[dict[str, Any], list[Any], list[Any]]:
+    """Quantities, page relations (name, lhs, rhs) and first derivatives to check numerically (f, df, var)."""
+    D = sp.diff
+    N = sy["N"]
+    q: dict[str, Any]
+    if pot == "A":
+        T, V = sy["T"], sy["V"]
+        S, p = -D(f, T), -D(f, V)
+        U = f + T * S
+        CV = T * D(S, T)
+        kappa = -1 / (V * D(p, V))
+        alpha = kappa * D(p, T)
+        q = {"S": S, "p": p, "U": U, "H": U + p * V, "G": f + p * V, "C_V": CV}
+        q.update({"C_p": CV + T * V * alpha**2 / kappa, "kappa_T": kappa, "alpha": alpha})
+        rels = [
+            ("(dS/dV)_T = (dp/dT)_V", D(S, V), D(p, T)),
+            ("U = -T^2 (d(A/T)/dT)_V", U, -(T**2) * D(f / T, T)),
+            ("G = -V^2 (d(A/V)/dV)_T", f + p * V, -(V**2) * D(f / V, V)),
+            ("(dU/dV)_T = T (dp/dT)_V - p", D(U, V), T * D(p, T) - p),
+            ("-(dp/dV)_T = 1/(V kappa_T)", -D(p, V), 1 / (V * kappa)),
+            ("(dT/dS)_V = T/C_V", 1 / D(S, T), T / CV),
+        ]
+        checks = [(f, -S, T), (f, -p, V)]
+    elif pot == "G":
+        T, P = sy["T"], sy["p"]
+        S, V = -D(f, T), D(f, P)
+        H = f + T * S
+        Cp = T * D(S, T)
+        kappa = -D(V, P) / V
+        alpha = D(V, T) / V
+        q = {"S": S, "V": V, "H": H, "U": H - P * V, "A": f - P * V, "C_p": Cp}
+        q.update({"C_V": Cp - T * V * alpha**2 / kappa, "kappa_T": kappa, "alpha": alpha})
+        rels = [
+            ("-(dS/dp)_T = (dV/dT)_p", -D(S, P), D(V, T)),
+            ("H = -T^2 (d(G/T)/dT)_p", H, -(T**2) * D(f / T, T)),
+            ("(dH/dp)_T = V - T (dV/dT)_p", D(H, P), V - T * D(V, T)),
+            ("(dT/dS)_p = T/C_p", 1 / D(S, T), T / Cp),
+            ("-(dp/dV)_T = 1/(V kappa_T)", -1 / D(V, P), 1 / (V * kappa)),
+        ]
+        checks = [(f, -S, T), (f, V, P)]
+    elif pot == "U":
+        S, V = sy["S"], sy["V"]
+        T, p = D(f, S), -D(f, V)
+        q = {"T": T, "p": p, "H": f + p * V, "A": f - T * S, "G": f + p * V - T * S}
+        q["C_V"] = T / D(T, S)
+        rels = [
+            ("(dT/dV)_S = -(dp/dS)_V", D(T, V), -D(p, S)),
+            ("(dT/dV)_S = d2U/dSdV", D(T, V), D(f, S, V)),
+            ("(dT/dS)_V = T/C_V", D(T, S), T / q["C_V"]),
+        ]
+        checks = [(f, T, S), (f, -p, V)]
+    elif pot == "H":
+        S, P = sy["S"], sy["p"]
+        T, V = D(f, S), D(f, P)
+        U = f - P * V
+        q = {"T": T, "V": V, "U": U, "G": f - T * S, "A": U - T * S, "C_p": T / D(T, S)}
+        rels = [
+            ("(dT/dp)_S = (dV/dS)_p", D(T, P), D(V, S)),
+            ("(dT/dp)_S = d2H/dSdp", D(T, P), D(f, S, P)),
+            ("(dT/dS)_p = T/C_p", D(T, S), T / q["C_p"]),
+        ]
+        checks = [(f, T, S), (f, V, P)]
+    elif pot == "S":
+        U, V = sy["U"], sy["V"]
+        T = 1 / D(f, U)
+        p = T * D(f, V)
+        q = {"T": T, "p": p, "C_V": -(D(f, U) ** 2) / D(f, U, 2)}
+        rels = [
+            ("(dS/dU)_V,N = 1/T", D(f, U), 1 / T),
+            ("(dS/dV)_U,N = p/T", D(f, V), p / T),
+            ("(d(1/T)/dV)_U = (d(p/T)/dU)_V", D(1 / T, V), D(p / T, U)),
+        ]
+        checks = [(f, 1 / T, U), (f, p / T, V)]
+        if f.has(N):
+            q["mu"] = -T * D(f, N)
+            rels.append(("(dS/dN)_U,V = -mu/T", D(f, N), -q["mu"] / T))
+            checks.append((f, -q["mu"] / T, N))
+        return q, rels, checks
+    elif pot == "Omega":
+        T, V, MU = sy["T"], sy["V"], sy["mu"]
+        S, p, Nq = -D(f, T), -D(f, V), -D(f, MU)
+        U = f + T * S + MU * Nq
+        A = f + MU * Nq
+        q = {"S": S, "p": p, "N": Nq, "U": U, "A": A, "G": A + p * V, "H": U + p * V}
+        rels = [
+            ("(dS/dV)_T,mu = (dp/dT)_V,mu", D(S, V), D(p, T)),
+            ("(dS/dmu)_T,V = (dN/dT)_V,mu", D(S, MU), D(Nq, T)),
+            ("(dp/dmu)_T,V = (dN/dV)_T,mu", D(p, MU), D(Nq, V)),
+        ]
+        return q, rels, [(f, -S, T), (f, -p, V), (f, -Nq, MU)]
+    else:  # equation of state p(V, T)
+        V, T = sy["V"], sy["T"]
+        p_t, p_v = D(f, T), D(f, V)
+        kappa = -1 / (V * p_v)
+        alpha = kappa * p_t
+        q = {"dp_dT_V": p_t, "dp_dV_T": p_v, "dS_dV_T": p_t, "dU_dV_T": T * p_t - f}
+        q.update({"kappa_T": kappa, "alpha": alpha, "Cp_minus_Cv": T * V * alpha**2 / kappa})
+        rels = [
+            ("C_p - C_V = -T (dp/dT)_V^2 / (dp/dV)_T", T * V * alpha**2 / kappa, -T * p_t**2 / p_v),
+            ("(dp/dT)_V = alpha / kappa_T", p_t, alpha / kappa),
+        ]
+        return q, rels, [(f, p_t, T), (f, p_v, V)]
+    if f.has(N):
+        q["mu"] = D(f, N)
+        rels.append((f"mu = (d{pot}/dN)_{_THERMO_NATURAL[pot]}", q["mu"], D(f, N)))
+        checks.append((f, q["mu"], N))
+    return q, rels, checks
+
+
+def _thermo_values(
+    at: Any, q: dict[str, Any], f: Any, sy: dict[str, Any], ctx: Ctx
+) -> dict[str, float]:
+    if not isinstance(at, dict) or not at:
+        raise ToolError(
+            "INVALID_ARGUMENT", "'at' is an object {name: number}.", '{"T": 300, "V": 0.0224}'
+        )
+    known = {s.name: s for s in f.free_symbols} | sy
+    subs: dict[Any, Any] = {}
+    for name, raw in at.items():
+        if name not in known:
+            raise ToolError("INVALID_ARGUMENT", f"at.{name} is not a symbol of the expression.")
+        if isinstance(raw, bool) or not isinstance(raw, int | float) or not math.isfinite(raw):
+            raise ToolError("INVALID_ARGUMENT", f"at.{name} must be a finite number.")
+        subs[known[name]] = sp.Rational(repr(raw)) if isinstance(raw, float) else sp.Integer(raw)
+    values: dict[str, float] = {}
+    left: list[str] = []
+    for name, e in q.items():
+        v = e.subs(subs)
+        if v.free_symbols:
+            left.append(name)
+            continue
+        z = complex(sp.N(v, 30))
+        if not (math.isfinite(z.real) and abs(z.imag) <= 1e-12 * max(1.0, abs(z.real))):
+            left.append(name)
+            continue
+        values[name] = z.real
+    if left:
+        ctx.warn(f"No real value at the given point for: {', '.join(left)}.")
+    return values
+
+
+@op("thermo_relations")
+def _thermo_relations(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
+    pot = args.get("potential")
+    if pot not in _THERMO_VARS:
+        raise ToolError(
+            "INVALID_ARGUMENT",
+            "'potential' is one of U (of S, V), H (of S, p), A (of T, V), G (of T, p), "
+            "S (of U, V, N), Omega (grand potential of T, V, mu), eos (p of V, T).",
+            '{"operation": "thermo_relations", "potential": "eos", '
+            '"expr": "n*R*T/(V - n*b) - a*n**2/V**2"}',
+        )
+    names = set(_THERMO_VARS[pot]) | {"N"}
+    sy = {
+        n: sp.Symbol(n, positive=True) if n in _THERMO_POSITIVE else sp.Symbol(n, real=True)
+        for n in names
+    }
+    f = expr_of(_need(args, "expr", "-n*R*T*(log(V/n) + 3/2*log(T))"), grammar(None, extra=sy))
+    if not any(f.has(sy[n]) for n in _THERMO_VARS[pot][:2]):
+        raise ToolError(
+            "INVALID_ARGUMENT",
+            f"The expression of {pot} must depend on its natural variables "
+            f"{', '.join(_THERMO_VARS[pot])}.",
+        )
+    results = _THERMO_RESULTS | ({"N"} if pot == "Omega" else set())
+    clash = sorted({s.name for s in f.free_symbols} & (results - set(_THERMO_VARS[pot])))
+    if clash:
+        raise ToolError(
+            "INVALID_ARGUMENT",
+            f"The expression uses {', '.join(clash)}, which this operation computes from {pot}; "
+            f"write {pot} with {', '.join(_THERMO_VARS[pot])} and constants only.",
+        )
+    q, rels, checks = _thermo_quantities(pot, f, sy)
+    q = {k: sp.simplify(v) for k, v in q.items()}
+    relations = [
+        {
+            "relation": name,
+            "lhs": str(sp.simplify(lhs)),
+            "rhs": str(sp.simplify(rhs)),
+            "holds": is_zero(lhs - rhs),
+        }
+        for name, lhs, rhs in rels
+    ]
+    # independent check: the first derivatives against mpmath finite differences (as D90)
+    numeric = all(_check_derivative_numeric(e, d, [(v, 1)]) for e, d, v in checks)
+    out: dict[str, Any] = {
+        "potential": pot,
+        "variables": list(_THERMO_VARS[pot]),
+        "quantities": {k: str(v) for k, v in q.items()},
+        "relations": relations,
+        "verified": numeric and all(r["holds"] for r in relations),
+    }
+    if args.get("at") is not None:
+        out["values"] = _thermo_values(args["at"], q, f, sy, ctx)
+    ctx.formatted = "; ".join(f"{k} = {v}" for k, v in out["quantities"].items())
+    return out
+
+
+# ------------------------------------------------------------------ wavefunctions (D99)
+
+_WF_MAX_VARS = 6  # two particles in 3D
+_WF_EXAMPLE = "(2*a/pi)**(1/4)*exp(-a*x**2 + I*k*x)"
+
+
+def _wf_rename(e: Any, names: list[str]) -> Any:
+    """Space variables and t real, every other name a positive constant (hbar, m, a, L, omega, ...)."""
+    sub = {
+        s: sp.Symbol(s.name, real=True)
+        if s.name in names or s.name == "t"
+        else sp.Symbol(s.name, positive=True)
+        for s in e.free_symbols
+    }
+    return e.xreplace(sub)
+
+
+def _wf_const(name: str) -> Any:
+    return sp.Symbol(name, positive=True)
+
+
+def _wf_fixed(e: Any, xs: list[Any]) -> dict[Any, Any]:
+    """Values of the constants for the numerical checks: 7/5, 8/5, ... in name order."""
+    others = sorted(e.free_symbols - set(xs), key=lambda s: s.name)
+    return {s: sp.Rational(7 + i, 5) for i, s in enumerate(others)}
+
+
+def _wf_check_local(psi: Any, rho: Any, cur: list[Any], xs: list[Any]) -> bool:
+    """rho = |Psi|^2 and j = (hbar/m) Im(Psi* dPsi/dx) at 3 points, with mpmath derivatives (as D90)."""
+    import mpmath
+
+    hbar, mass = _wf_const("hbar"), _wf_const("m")
+    fixed = _wf_fixed(psi + hbar + mass, xs)
+    p0 = psi.subs(fixed)
+    r0 = rho.subs(fixed)
+    c0 = [c.subs(fixed) for c in cur]
+    good = 0
+    with mpmath.workdps(40):
+        h_m = _mp_value(fixed[hbar] / fixed[mass], {}).real
+        for pn, pd in ((3, 7), (6, 5), (-4, 9)):
+            pts = {x: mpmath.mpf(pn + j) / pd for j, x in enumerate(xs)}
+            try:
+                val = _mp_value(p0, pts)
+                if abs(_mp_value(r0, pts) - abs(val) ** 2) > mpmath.mpf("1e-25") * (
+                    1 + abs(val) ** 2
+                ):
+                    return False
+                for i, x in enumerate(xs):
+                    rest = {y: v for y, v in pts.items() if y is not x}
+
+                    def f(v: Any, x: Any = x, rest: dict[Any, Any] = rest) -> Any:
+                        return _mp_value(p0, {**rest, x: v})
+
+                    want = h_m * mpmath.im(mpmath.conj(val) * mpmath.diff(f, pts[x]))
+                    if abs(_mp_value(c0[i], pts) - want) > mpmath.mpf("1e-25") * (1 + abs(want)):
+                        return False
+            except (TypeError, ValueError, ZeroDivisionError):
+                continue
+            good += 1
+    return good > 0
+
+
+_WF_GRID_N = (
+    48  # Gauss-Legendre points per dimension of the probability check (48^3 = 110592 points)
+)
+_WF_GRID_MAX_DIM = 3
+
+
+def _wf_grid(lo: float, hi: float) -> tuple[Any, Any]:
+    """Nodes and weights on [lo, hi]; infinite ends mapped by x = u / (1 - u^2) or x = a + v / (1 - v)."""
+    u, w = np.polynomial.legendre.leggauss(_WF_GRID_N)
+    inf = float("inf")
+    if lo == -inf and hi == inf:
+        return u / (1 - u * u), w * (1 + u * u) / (1 - u * u) ** 2
+    if hi == inf or lo == -inf:
+        v = (u + 1) / 2  # 0 < v < 1
+        dx = w / 2 / (1 - v) ** 2
+        return (lo + v / (1 - v), dx) if hi == inf else (hi - v / (1 - v), dx)
+    return (hi - lo) / 2 * u + (hi + lo) / 2, w * (hi - lo) / 2
+
+
+def _wf_box_integral(fl: Callable[..., float], lims: list[tuple[float, float]]) -> float:
+    """Tensor Gauss-Legendre sum of fl over a box (D99: nquad needed 2.9 million calls in 3D)."""
+    grids = [_wf_grid(lo, hi) for lo, hi in lims]
+    total = 0.0
+    for combo in itertools.product(*(range(_WF_GRID_N) for _ in grids)):
+        weight = 1.0
+        point = []
+        for (nodes, weights), i in zip(grids, combo, strict=True):
+            weight *= weights[i]
+            point.append(nodes[i])
+        value = fl(*point)
+        if math.isfinite(value):
+            total += weight * value
+    return total
+
+
+def _mp_bound(b: Any) -> Any:
+    import mpmath
+
+    if b == sp.oo:
+        return mpmath.inf
+    if b == -sp.oo:
+        return -mpmath.inf
+    return mpmath.mpf(str(sp.N(b, 30)))
+
+
+def _wf_probability(
+    rho: Any, xs: list[Any], rows: Any, names: list[str], ctx: Ctx
+) -> tuple[str | None, bool]:
+    """Integral of rho over the region of `bounds`, checked with mpmath.quad."""
+    import mpmath
+
+    if (
+        not isinstance(rows, list)
+        or not rows
+        or not all(isinstance(r, list) and len(r) == 3 for r in rows)
+    ):
+        raise ToolError("INVALID_ARGUMENT", "'bounds' is [[x, a, b], ...].", '[["x", "-oo", "oo"]]')
+    by_name = {x.name: x for x in xs}
+    g = grammar(names)
+    region = []
+    for name, a, b in rows:
+        if name not in by_name:
+            raise ToolError(
+                "INVALID_ARGUMENT", f"bounds: '{name}' is not one of the space variables."
+            )
+        lo, hi = (_wf_rename(value_of(v, g), names) for v in (a, b))
+        region.append((by_name[name], lo, hi))
+    total = sp.integrate(rho, *region, conds="none")
+    result = None
+    if total.has(sp.Integral):
+        ctx.warn("No closed form for the probability: only the numerical value is checked.")
+    else:
+        total = sp.simplify(total)
+        result = str(total)
+    # the symbols of the bounds one by one: -oo + oo would be nan and lose them
+    bound_syms = {s for _, lo, hi in region for s in lo.free_symbols | hi.free_symbols}
+    fixed = _wf_fixed(rho + sp.Add(*bound_syms), [r[0] for r in region])
+    f0 = rho.subs(fixed)
+    variables = [r[0] for r in region]
+    lims = [(lo.subs(fixed), hi.subs(fixed)) for _, lo, hi in region]
+    if any(b.free_symbols for lim in lims for b in lim):
+        raise ToolError(
+            "INVALID_ARGUMENT", "The bounds of a wavefunction are constants, not space variables."
+        )
+    try:
+        if len(region) == 1:  # mpmath at 20 digits
+            with mpmath.workdps(20):
+                fn = compile_mp(f0, variables, 20)
+                quad = cast(Any, mpmath.quad)
+                numeric = complex(quad(fn, [_mp_bound(lims[0][0]), _mp_bound(lims[0][1])]))
+        elif len(region) <= _WF_GRID_MAX_DIM:  # fixed Gauss-Legendre grid on the float function
+            fl = compile_expr(f0, variables)
+            box = [(float(sp.N(lo)), float(sp.N(hi))) for lo, hi in lims]
+            numeric = complex(_wf_box_integral(fl, box))
+        else:
+            ctx.warn(
+                f"The probability is checked numerically up to {_WF_GRID_MAX_DIM} dimensions: "
+                "not verified here."
+            )
+            return result, False
+    except (TypeError, ValueError, ZeroDivisionError, OverflowError):
+        return result, False
+    if result is None:
+        return None, True
+    exact = complex(sp.N(total.subs(fixed), 20))
+    tol = 1e-10 if len(region) == 1 else 1e-7
+    return result, abs(exact - numeric) <= tol * (1 + abs(exact))
+
+
+def _wf_momentum(psi: Any, xs: list[Any], ctx: Ctx) -> tuple[str | None, list[str], bool]:
+    """Phi(p) = (2 pi hbar)^(-d/2) integral exp(-i p.r / hbar) Psi d^d r; 1D checked by mpmath.quad."""
+    import mpmath
+
+    hbar = _wf_const("hbar")
+    ps = [sp.Symbol(f"p_{x.name}", real=True) for x in xs]
+    names = [p.name for p in ps]
+    kernel = sp.exp(-sp.I * sp.Add(*(p * x for p, x in zip(ps, xs, strict=True))) / hbar)
+    phi = sp.integrate(kernel * psi, *[(x, -sp.oo, sp.oo) for x in xs], conds="none")
+    if phi.has(sp.Integral):
+        ctx.warn("No closed form for the momentum-space wavefunction.")
+        return None, names, False
+    phi = sp.simplify(phi / (2 * sp.pi * hbar) ** sp.Rational(len(xs), 2))
+    if len(xs) > 1:
+        ctx.warn("The momentum-space wavefunction is checked numerically in 1D only.")
+        return str(phi), names, True
+    fixed = _wf_fixed(psi + hbar, xs) | {ps[0]: sp.Rational(9, 5)}
+    f0 = (kernel * psi).subs(fixed)
+    with mpmath.workdps(30):
+        try:
+            fn = compile_mp(f0, [xs[0]], 30)
+            numeric = mpmath.quad(lambda v: fn(v), [-mpmath.inf, mpmath.inf])
+            numeric /= mpmath.sqrt(2 * mpmath.pi * _mp_value(fixed[hbar], {}).real)
+            exact = _mp_value(phi.subs(fixed), {})
+        except (TypeError, ValueError, ZeroDivisionError):
+            return str(phi), names, False
+        ok = abs(exact - numeric) <= mpmath.mpf("1e-15") * (1 + abs(exact))
+    return str(phi), names, bool(ok)
+
+
+@op("wavefunction")
+def _wavefunction(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
+    names = _need(args, "variables", '["x"]')
+    if not isinstance(names, list) or not all(isinstance(n, str) for n in names):
+        raise ToolError("INVALID_ARGUMENT", "'variables' is the list of space variables.", '["x"]')
+    if len(names) > _WF_MAX_VARS:
+        raise ToolError("LIMIT_EXCEEDED", f"At most {_WF_MAX_VARS} space variables.")
+    if "t" in names:
+        raise ToolError(
+            "INVALID_ARGUMENT", "t is the time: list only the space variables.", '["x"]'
+        )
+    g = grammar(names)
+    psi = _wf_rename(expr_of(_need(args, "expr", _WF_EXAMPLE), g), names)
+    xs = [sp.Symbol(n, real=True) for n in names]
+    t = sp.Symbol("t", real=True)
+    hbar, mass = _wf_const("hbar"), _wf_const("m")
+    rho = sp.simplify(sp.conjugate(psi) * psi)
+    cur = [
+        sp.simplify(hbar / mass * sp.im(sp.expand(sp.conjugate(psi) * sp.diff(psi, x)))) for x in xs
+    ]
+    out: dict[str, Any] = {"density": str(rho), "current": [str(c) for c in cur]}
+    checks = [_wf_check_local(psi, rho, cur, xs)]
+    if args.get("bounds") is not None:
+        out["probability"], ok = _wf_probability(rho, xs, args["bounds"], names, ctx)
+        checks.append(ok)
+    if args.get("momentum_space"):
+        out["momentum_wavefunction"], out["momentum_variables"], ok = _wf_momentum(psi, xs, ctx)
+        checks.append(ok)
+    if args.get("potential_energy") is not None:
+        pot = _wf_rename(expr_of(args["potential_energy"], g), names)
+        h_psi = -(hbar**2) / (2 * mass) * sp.Add(*(sp.diff(psi, x, 2) for x in xs)) + pot * psi
+        if psi.has(t):
+            res = sp.simplify(sp.I * hbar * sp.diff(psi, t) - h_psi)
+            out["schrodinger"] = {"residual": str(res), "satisfied": is_zero(res)}
+        else:
+            e = sp.simplify(h_psi / psi)
+            out["schrodinger"] = {"energy": str(e), "eigenstate": not (e.free_symbols & set(xs))}
+    out["verified"] = all(checks)
+    ctx.formatted = f"|Psi|^2 = {out['density']}"
+    return out

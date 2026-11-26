@@ -150,6 +150,17 @@ def _equivalent(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     }
 
 
+def _with_values(text: str, g: Any, gv: Any, values: dict[str, Any]) -> Any:
+    """Equation read with the solution in place; a value that makes it undefined (1/x at x = 0) stops the
+    parser, so that equation is read with the bare names and the values go in afterwards (residual zoo)."""
+    try:
+        return expr_of(text, gv)
+    except ToolError as err:
+        if err.code != "MATH_ERROR":
+            raise
+        return expr_of(text, g).subs({sp.Symbol(k): v for k, v in values.items()})
+
+
 @op("check_solution")
 def _check_solution(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     sol = args.get("solution")
@@ -159,22 +170,34 @@ def _check_solution(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         )
     names = list(args.get("variables") or []) + [str(k) for k in sol]
     g = grammar(names)
-    eqs = [expr_of(t, g) for t in split_list(args["expr"])]
-    subs = {sp.Symbol(str(k)): value_of(v, g) for k, v in sol.items()}
+    values = {str(k): value_of(v, g) for k, v in sol.items()}
+    # D101: while the equations are read each name of the solution stands for its value, so diff(y, x) acts on
+    # the claimed function. Before, diff(y, x) was taken on the bare symbol y (= 0) and the value came later.
+    gv = grammar(names, extra=values)
+    eqs = [_with_values(t, g, gv, values) for t in split_list(args["expr"])]
+    keys = {sp.Symbol(k) for k in values}
+    # symbols the solution itself depends on (x, t, a parameter): a residual left in them is a wrong function
+    own: set[Any] = (
+        set().union(*(getattr(v, "free_symbols", set()) for v in values.values())) - keys
+    )
     tol = float(args.get("tolerance", 1e-9))
     residuals = []
     valid = True
     approx = False
     for e in eqs:
-        r = sp.simplify(e.subs(subs))
+        r = sp.simplify(e)
         residuals.append(str(r))
-        if r.free_symbols:
+        missing = r.free_symbols - own
+        if missing:
             raise ToolError(
                 "INVALID_ARGUMENT",
-                f"Missing the value of {sorted(map(str, r.free_symbols))}.",
+                f"Missing the value of {sorted(map(str, missing))}.",
                 '{"x": "2", "y": "1"}',
             )
         if is_zero(r):
+            continue
+        if r.free_symbols:  # not zero as a function of the solution's own variables
+            valid = False
             continue
         v = abs(complex(sp.N(r, 30)))
         if v <= tol:
@@ -183,7 +206,10 @@ def _check_solution(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
             valid = False
     if approx and valid:
         ctx.warn(f"Residuals not exactly zero but below the tolerance {tol}.")
-    ctx.step(f"Substituting {', '.join(f'{k} = {v}' for k, v in subs.items())} into each equation.")
+    ctx.step(
+        f"Substituting {', '.join(f'{k} = {v}' for k, v in values.items())} into each equation "
+        "before any derivative is taken."
+    )
     ctx.step(f"Residuals: {residuals}.")
     ctx.step(f"Outcome: {'correct solution' if valid else 'wrong solution'}.")
     ctx.formatted = "Correct solution." if valid else "WRONG solution."

@@ -30,7 +30,8 @@ def test_lean_code_limit() -> None:
 @pytest.mark.skipif(not LEAN_READY, reason="Lean + Mathlib not installed")
 def test_lean_valid_and_invalid_proof() -> None:
     r = call("lean_check", code="theorem t : (2 : ℕ) + 2 = 4 := by norm_num")
-    assert r["ok"] and r["result"]["valid"] is True
+    assert r["ok"], r.get("error")  # the error code says why (D98: TIMEOUT or else)
+    assert r["result"]["valid"] is True
     r = call("lean_check", code="theorem t : (2 : ℕ) + 2 = 5 := by norm_num")
     assert r["ok"] and r["result"]["valid"] is False and r["result"]["errors"]
 
@@ -38,6 +39,7 @@ def test_lean_valid_and_invalid_proof() -> None:
 @pytest.mark.skipif(not LEAN_READY, reason="Lean + Mathlib not installed")
 def test_lean_sorry_detected() -> None:
     r = call("lean_check", code="theorem t (n : ℕ) : n + 0 = n := by sorry")
+    assert r["ok"], r.get("error")
     assert r["result"]["has_sorry"] is True and r["result"]["valid"] is False
 
 
@@ -45,6 +47,7 @@ def test_lean_sorry_detected() -> None:
 def test_lean_axioms_are_checked() -> None:
     """D36: valid only with the standard axioms; the check must really run."""
     r = call("lean_check", code="theorem t (p : Prop) : p ∨ ¬p := Classical.em p")
+    assert r["ok"], r.get("error")
     assert r["result"]["valid"] is True
     assert set(r["result"]["axioms"]) <= lean_check.STANDARD_AXIOMS
     assert "Classical.choice" in r["result"]["axioms"]
