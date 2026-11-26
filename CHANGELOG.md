@@ -232,6 +232,15 @@ pages), one group at a time.
   from the tool's acceleration on 64 points of the orbit and the gyroscope precession averaged on the polar
   orbit of Gravity Probe B. Contract unchanged (206 operations). Mutation check: 25 changed lines out of 25
   caught.
+- Electronegativity (D110, spec 4.26.0, `eng_qchem.py`): the 2 missing formulas of the physical chemistry
+  page (section "Quantum chemistry"). New `eng_calc.electronegativity` with 3 modes: `pauling` (difference
+  from the bond dissociation energies, arithmetic mean as on the page or the article's geometric-mean fit,
+  chi_A from chi_B), `bond_energy` (the inverse) and `mulliken` (absolute electronegativity, chemical
+  potential, Pauling-scale fit 10^-3 [187 (E_I + E_EA) + 170]). Energies in J, eV or per mole (kJ/mol,
+  kcal/mol); a plain number is in joules and a value far from chemical energies is flagged. `eng_calc` 89
+  operations, contract 207. 8 tests in `tests/test_electronegativity_d110.py` against the article's H-Br
+  example (0.73), Allred's bromine (2.96), the round trips of both means and the per-mole inputs. Mutation
+  check: 29 changed lines out of 29 caught.
 - Linux tested (Ubuntu 22.04, x86_64, Python 3.12.13, uv 0.11.20): `--self-check` ok in 8.65 s; suite
   1,026 passed and 7 skipped in 44.91 s. macOS is not tested.
 

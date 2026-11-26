@@ -32,7 +32,8 @@ eng_waves: general wave functions and modulation, D100;
 eng_frames: reference frames and Euler's equations of a rigid body, D102;
 eng_scatter: nuclear scattering, Breit-Wigner, Rutherford and Mott, D105;
 eng_photonics: electromagnetic radiation and astronomical photometry, D106;
-eng_magnetics: magnetic dipoles and magnetic circuits, D107); this module loads them and
+eng_magnetics: magnetic dipoles and magnetic circuits, D107;
+eng_qchem: electronegativity, Pauling and Mulliken, D110); this module loads them and
 exposes `handle` and `OPS`.
 """
 
@@ -67,6 +68,7 @@ from . import (
     eng_photonics,
     eng_plates,
     eng_psychro,
+    eng_qchem,
     eng_rad,
     eng_rolling,
     eng_scatter,
@@ -113,6 +115,7 @@ __all__ = [
     "eng_photonics",
     "eng_plates",
     "eng_psychro",
+    "eng_qchem",
     "eng_rad",
     "eng_rolling",
     "eng_scatter",
