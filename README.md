@@ -59,7 +59,8 @@ and synchronous motors), thin plates (circular and rectangular) and continuous b
 moments, with settlements and fixed ends) local losses at sudden changes of section (Borda-Carnot) and stress concentration at holes (Kirsch,
 Inglis) rotor balancing (one and two planes, ISO balance grades), rolling without slipping and the kinetic theory
 of gases (molecular speeds, Maxwell-Boltzmann distribution, mean free path, effusion, equipartition) and
-Newtonian gravitation (point masses, spheres and shells, rings, rotating bodies, Gauss's law).
+Newtonian gravitation (point masses, spheres and shells, rings, rotating bodies, Gauss's law) and the
+gravitomagnetism of a rotating body (Lense-Thirring precession).
 
 The full contract (names, JSON schemas, examples) is in `docs/spec/SPEC_OCE_MATH_MCP_V3.md` and in
 `docs/spec/oce_math_mcp_tools.json`. Every response has 9 fixed fields: `ok`, `tool`,

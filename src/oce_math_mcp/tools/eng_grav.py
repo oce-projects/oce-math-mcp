@@ -1,4 +1,4 @@
-"""eng_calc: Newtonian gravitation (D88).
+"""eng_calc: Newtonian gravitation (D88) and gravitomagnetism (D109).
 
 Sources: Wikipedia pages "List of equations in gravitation", "Shell theorem", "Gravitational binding energy" and
 "Gauss's law for gravity" in the local offline library.
@@ -14,6 +14,12 @@ Sources: Wikipedia pages "List of equations in gravitation", "Shell theorem", "G
 - Gauss's law: the flux of g through a closed surface is -4 pi G M_enclosed.
 - Potential difference between r1 and r2 of a point mass: G M (r2 - r1) / (r1 r2), written without the
   cancellation of 1/r1 - 1/r2; uniform-field approximation m g(r1) h, relative error h / r1.
+- Gravitomagnetism (D109, weak field and slow motion; also the article "Gravitoelectromagnetism"): field of a
+  rotating body xi = G / (2 c^2) (L - 3 (L . r^) r^) / r^3 (the list page loses the minus sign), potential
+  h = -G / (2 c^2) L x r / r^3 with xi = curl h, torsion field Omega = 2 xi, gyroscope (Lense-Thirring)
+  precession -2 xi, flux xi . n A through a flat surface. Force on a test mass m (v x 4 xi) = m (v x 2 Omega)
+  as in the article: the list page writes m (v x 2 xi), half of it, and only 4 xi gives the Lense-Thirring
+  precession of an orbital node 2 G J / (c^2 a^3).
 """
 
 from __future__ import annotations
@@ -27,6 +33,7 @@ from ..errors import ToolError
 from .eng_base import choice, fmt_sig, need, one_of, only, op, qty, range_guard, units_for
 
 G = lookup("Newtonian constant of gravitation")[1]
+C_LIGHT = lookup("c")[1]
 _MAX_MASSES = 1000
 
 _CENTRAL = {"M", "mu"}
@@ -38,6 +45,7 @@ _MODES: dict[str, set[str]] = {
     "rotating_body": _CENTRAL | {"R", "omega", "T_rot", "latitude_deg"},
     "gauss": {"M", "Phi_G"},
     "potential_difference": _CENTRAL | {"r1", "r2", "m"},
+    "gravitomagnetism": {"L", "point", "center", "v", "m_test", "normal", "A"},
 }
 _UNITS = {
     "F": "N",
@@ -73,6 +81,17 @@ _UNITS = {
     "W": "J",
     "W_uniform": "J",
     "uniform_field_error": "1",
+    "r_vector": "m",
+    "r_magnitude": "m",
+    "xi": "1/s",
+    "xi_magnitude": "1/s",
+    "Omega": "1/s",
+    "h": "m/s",
+    "gyroscope_precession": "rad/s",
+    "a_gm": "m/s2",
+    "F_gm": "N",
+    "flux_xi": "m2/s",
+    "flux_Omega": "m2/s",
 }
 
 
@@ -95,6 +114,7 @@ def _gravitation(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         "rotating_body": _rotating,
         "gauss": _gauss,
         "potential_difference": _potential_difference,
+        "gravitomagnetism": _gravitomagnetism,
     }[mode](p, ctx)
     ctx.units = units_for(out, _UNITS)
     return out
@@ -326,4 +346,90 @@ def _potential_difference(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         out["W_uniform"] = m * out["g1"] * h
         ctx.formula += "; W = m dPhi"
     ctx.formatted = f"Potential difference {fmt_sig(d_phi, 6)} J/kg from r1 to r2."
+    return out
+
+
+def _vec3(p: dict[str, Any], key: str, what: str) -> list[float]:
+    raw = p.get(key)
+    if not isinstance(raw, list) or len(raw) != 3:
+        raise ToolError(
+            "INVALID_ARGUMENT", f"params.{key}: {what}, 3 numbers [x, y, z] in SI units."
+        )
+    for v in raw:
+        if isinstance(v, bool) or not isinstance(v, int | float) or not math.isfinite(v):
+            raise ToolError("INVALID_ARGUMENT", f"params.{key}: finite numbers only.")
+    return [float(v) for v in raw]
+
+
+def _cross(a: list[float], b: list[float]) -> list[float]:
+    return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+
+
+def _dot(a: list[float], b: list[float]) -> float:
+    return sum(x * y for x, y in zip(a, b, strict=True))
+
+
+def _gravitomagnetism(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
+    lv = _vec3(p, "L", "the angular momentum of the rotating body (kg m2/s)")
+    x = _vec3(p, "point", "the field point (m)")
+    x0 = (
+        _vec3(p, "center", "the centre of the body (m)")
+        if p.get("center") is not None
+        else [0.0, 0.0, 0.0]
+    )
+    r = [a - b for a, b in zip(x, x0, strict=True)]
+    size = math.sqrt(_dot(r, r))
+    if size == 0:
+        raise ToolError(
+            "INVALID_ARGUMENT",
+            "params.point is the centre of the body (params.center): the field of a point source is infinite there.",
+        )
+    k = G / (2 * C_LIGHT * C_LIGHT)
+    lr = _dot(lv, r) / size
+    xi = [k * (li - 3 * lr * ri / size) / size**3 for li, ri in zip(lv, r, strict=True)]
+    out: dict[str, Any] = {
+        "r_vector": r,
+        "r_magnitude": size,
+        "xi": xi,
+        "xi_magnitude": math.sqrt(_dot(xi, xi)),
+        "Omega": [2 * v for v in xi],
+        "h": [-k * v / size**3 for v in _cross(lv, r)],
+        "gyroscope_precession": [-2 * v for v in xi],
+    }
+    if p.get("m_test") is not None and p.get("v") is None:
+        raise ToolError(
+            "INVALID_ARGUMENT",
+            "params.m_test needs params.v (the velocity of the test mass): F = m v x 4 xi.",
+        )
+    if p.get("v") is not None:
+        vel = _vec3(p, "v", "the velocity of the test mass (m/s)")
+        if _dot(vel, vel) >= C_LIGHT * C_LIGHT:
+            raise ToolError(
+                "INVALID_ARGUMENT",
+                "params.v must be less than the speed of light (and small against it: weak field, slow motion).",
+            )
+        acc = [4 * v for v in _cross(vel, xi)]
+        out["a_gm"] = acc
+        if p.get("m_test") is not None:
+            mass = need(p, "m_test", "mass")
+            out["F_gm"] = [mass * v for v in acc]
+    if p.get("normal") is not None or p.get("A") is not None:
+        if p.get("normal") is None or p.get("A") is None:
+            raise ToolError(
+                "INVALID_ARGUMENT",
+                "The flux needs both params.normal (the normal of a flat surface) and params.A (its area).",
+            )
+        nv = _vec3(p, "normal", "the normal of the flat surface")
+        length = math.sqrt(_dot(nv, nv))
+        if length == 0:
+            raise ToolError("INVALID_ARGUMENT", "params.normal must not be the zero vector.")
+        flux = _dot(xi, nv) / length * need(p, "A", "area")
+        out["flux_xi"] = flux
+        out["flux_Omega"] = 2 * flux
+    ctx.formula = (
+        "xi = G / (2 c^2) (L - 3 (L . r^) r^) / r^3 (the list page loses the minus), h = -G / (2 c^2) L x r / r^3, "
+        "xi = curl h, Omega = 2 xi, gyroscope precession -2 xi (Lense-Thirring), a = v x 4 xi = v x 2 Omega "
+        "(article Gravitoelectromagnetism; the list page's v x 2 xi is half the Lense-Thirring value)"
+    )
+    ctx.formatted = f"|xi| = {fmt_sig(out['xi_magnitude'])} 1/s at |r| = {fmt_sig(size)} m"
     return out

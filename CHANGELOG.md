@@ -220,6 +220,18 @@ pages), one group at a time.
   "must be less than the speed of light", but u = c is allowed there; it now says "must not exceed".
   Mutation check: 14 changed lines out of 14 caught (the first run left the lightlike tolerance unchecked: an
   exact x = c t gives s2 = 0 for any tolerance; the test now classifies the rounded event of the moving frame).
+- Gravitomagnetism (D109, spec 4.25.0): the 5 missing formulas of the gravitation page (sections
+  "Gravitoelectromagnetism" and "Weak-field relativistic equations"). New mode `gravitomagnetism` of
+  `eng_calc.gravitation`: field xi of a rotating body, potential h (xi = curl h), torsion field Omega = 2 xi,
+  gyroscope precession -2 xi, acceleration and force on a moving test mass, flux through a flat surface.
+  Two errors of the list page, checked against the article "Gravitoelectromagnetism": the field loses the
+  minus sign of L - 3 (L . r^) r^, and the force m (v x 2 xi) is half of the article's m (v x 4 xi); only the
+  factor 4 gives the Lense-Thirring precession of an orbital node 2 G J / (c^2 a^3), and the tool uses it.
+  9 tests in `tests/test_gravitomagnetism_d109.py` against the field by components, xi = curl h by central
+  differences, the article's equator and Earth formulas, the node precession of LAGEOS (30.66 mas per year)
+  from the tool's acceleration on 64 points of the orbit and the gyroscope precession averaged on the polar
+  orbit of Gravity Probe B. Contract unchanged (206 operations). Mutation check: 25 changed lines out of 25
+  caught.
 - Linux tested (Ubuntu 22.04, x86_64, Python 3.12.13, uv 0.11.20): `--self-check` ok in 8.65 s; suite
   1,026 passed and 7 skipped in 44.91 s. macOS is not tested.
 
