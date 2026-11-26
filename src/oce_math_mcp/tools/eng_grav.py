@@ -1,4 +1,4 @@
-"""eng_calc: Newtonian gravitation (D88) and gravitomagnetism (D109).
+"""eng_calc: Newtonian gravitation (D88), gravitomagnetism (D109) and the inspiral of a circular binary (D113).
 
 Sources: Wikipedia pages "List of equations in gravitation", "Shell theorem", "Gravitational binding energy" and
 "Gauss's law for gravity" in the local offline library.
@@ -20,6 +20,14 @@ Sources: Wikipedia pages "List of equations in gravitation", "Shell theorem", "G
   precession -2 xi, flux xi . n A through a flat surface. Force on a test mass m (v x 4 xi) = m (v x 2 Omega)
   as in the article: the list page writes m (v x 2 xi), half of it, and only 4 xi gives the Lense-Thirring
   precession of an orbital node 2 G J / (c^2 a^3).
+- Gravitational waves of a circular binary (D113, quadrupole formula of Peters; pages "Two-body problem in general
+  relativity", section "Gravitational radiation", with e = 0 and a = r; "Gravitational wave", section "Binaries";
+  "Chirp mass"): radiated power P = 32 G^4 m1^2 m2^2 (m1 + m2) / (5 c^5 r^5), angular momentum loss
+  32 G^(7/2) m1^2 m2^2 sqrt(m1 + m2) / (5 c^5 r^(7/2)), period loss 192 pi G^(5/3) m1 m2 / (5 c^5 (m1 + m2)^(1/3))
+  omega^(5/3), dr/dt = -64 G^3 m1 m2 (m1 + m2) / (5 c^5 r^3), time to coalescence 5 c^5 r^4 / (256 G^3 m1 m2
+  (m1 + m2)), waves at twice the orbital frequency, chirp mass (m1 m2)^(3/5) / (m1 + m2)^(1/5) with
+  df/dt = 96/5 pi^(8/3) (G Mc / c^3)^(5/3) f^(11/3). Newtonian circular orbit omega^2 = G (m1 + m2) / r^3; warnings
+  when G M / (r c^2) = (v/c)^2 is above 1% and when r is inside 6 G M / c^2.
 """
 
 from __future__ import annotations
@@ -46,6 +54,7 @@ _MODES: dict[str, set[str]] = {
     "gauss": {"M", "Phi_G"},
     "potential_difference": _CENTRAL | {"r1", "r2", "m"},
     "gravitomagnetism": {"L", "point", "center", "v", "m_test", "normal", "A"},
+    "gw_inspiral": {"m1", "m2", "r"},
 }
 _UNITS = {
     "F": "N",
@@ -92,7 +101,23 @@ _UNITS = {
     "F_gm": "N",
     "flux_xi": "m2/s",
     "flux_Omega": "m2/s",
+    "reduced_mass": "kg",
+    "chirp_mass": "kg",
+    "power_gw": "W",
+    "dL_dt": "N*m",
+    "dP_orb_dt": "1",
+    "dr_dt": "m/s",
+    "t_coalescence": "s",
+    "omega_orb": "rad/s",
+    "P_orb": "s",
+    "f_orb": "Hz",
+    "f_gw": "Hz",
+    "df_gw_dt": "Hz/s",
+    "E_orb": "J",
+    "v_over_c": "1",
 }
+_PN_WARN = 0.01  # G M / (r c^2) = (v/c)^2 above which the post-Newtonian corrections are not small
+_JULIAN_YEAR = 365.25 * 86400.0
 
 
 def _mu(p: dict[str, Any]) -> float:
@@ -115,6 +140,7 @@ def _gravitation(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         "gauss": _gauss,
         "potential_difference": _potential_difference,
         "gravitomagnetism": _gravitomagnetism,
+        "gw_inspiral": _gw_inspiral,
     }[mode](p, ctx)
     ctx.units = units_for(out, _UNITS)
     return out
@@ -432,4 +458,61 @@ def _gravitomagnetism(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         "(article Gravitoelectromagnetism; the list page's v x 2 xi is half the Lense-Thirring value)"
     )
     ctx.formatted = f"|xi| = {fmt_sig(out['xi_magnitude'])} 1/s at |r| = {fmt_sig(size)} m"
+    return out
+
+
+def _gw_inspiral(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
+    m1, m2, r = need(p, "m1", "mass"), need(p, "m2", "mass"), need(p, "r", "length")
+    m = m1 + m2
+    c5 = C_LIGHT**5
+    k = G**3 * m1 * m2 * m / c5  # m^4/s
+    omega = math.sqrt(G * m / r**3)
+    p_orb = 2 * math.pi / omega
+    f_gw = 2 / p_orb
+    chirp = (m1 * m2) ** 0.6 / m**0.2
+    t_c = 5 / 256 * r**4 / k
+    x = G * m / (r * C_LIGHT**2)
+    dp_dt = -192 * math.pi / 5 * G ** (5 / 3) * m1 * m2 / (c5 * m ** (1 / 3)) * omega ** (5 / 3)
+    df_dt = 96 / 5 * math.pi ** (8 / 3) * (G * chirp / C_LIGHT**3) ** (5 / 3) * f_gw ** (11 / 3)
+    out: dict[str, Any] = {
+        "M_total": m,
+        "reduced_mass": m1 * m2 / m,
+        "chirp_mass": chirp,
+        "power_gw": 32 / 5 * G**4 * (m1 * m2) ** 2 * m / (c5 * r**5),
+        "dL_dt": -32 / 5 * G**3.5 * (m1 * m2) ** 2 * math.sqrt(m) / (c5 * r**3.5),
+        "dP_orb_dt": dp_dt,
+        "dr_dt": -64 / 5 * k / r**3,
+        "t_coalescence": t_c,
+        "omega_orb": omega,
+        "P_orb": p_orb,
+        "f_orb": f_gw / 2,
+        "f_gw": f_gw,
+        "df_gw_dt": df_dt,
+        "E_orb": -G * m1 * m2 / (2 * r),
+        "v_over_c": math.sqrt(x),
+    }
+    if x > _PN_WARN:
+        ctx.warn(
+            f"v/c = {fmt_sig(math.sqrt(x), 3)} (G M / (r c^2) = {fmt_sig(100 * x, 4)}%): the post-Newtonian "
+            "corrections of order (v/c)^2 are left out."
+        )
+    r_isco = 6 * G * m / C_LIGHT**2
+    if r < r_isco:
+        ctx.warn(
+            f"r is inside 6 G M / c^2 = {r_isco:,.6g} m, the innermost stable circular orbit of a test mass: "
+            "there the bodies plunge and the inspiral formulas do not hold."
+        )
+    ctx.formula = (
+        "circular orbit, quadrupole formula (Peters): P = 32 G^4 m1^2 m2^2 (m1 + m2) / (5 c^5 r^5), "
+        "dL/dt = -32 G^(7/2) m1^2 m2^2 sqrt(m1 + m2) / (5 c^5 r^(7/2)), "
+        "dr/dt = -64 G^3 m1 m2 (m1 + m2) / (5 c^5 r^3), t = 5 c^5 r^4 / (256 G^3 m1 m2 (m1 + m2)), "
+        "omega^2 = G (m1 + m2) / r^3, f_gw = 2 f_orb, "
+        "dP_orb/dt = -192 pi G^(5/3) m1 m2 / (5 c^5 (m1 + m2)^(1/3)) omega^(5/3), "
+        "chirp mass Mc = (m1 m2)^(3/5) / (m1 + m2)^(1/5), df_gw/dt = 96/5 pi^(8/3) (G Mc / c^3)^(5/3) f_gw^(11/3), "
+        "E = -G m1 m2 / (2 r)"
+    )
+    ctx.formatted = (
+        f"Time to coalescence t = {fmt_sig(t_c, 6)} s ({fmt_sig(t_c / _JULIAN_YEAR, 4)} years) from "
+        f"r = {fmt_sig(r, 6)} m; waves at f_gw = {fmt_sig(f_gw, 6)} Hz."
+    )
     return out

@@ -266,6 +266,17 @@ pages), one group at a time.
   g(E) (the states below E_F hold exactly n), the page range of metal Fermi energies (2-10 eV; n =
   8.47e28 per m3 gives 7.03 eV) and mpmath occupation numbers at 60 digits from x = 1e-12 to 800.
   Mutation check: 32 changed lines out of 32 caught. Full suite 1,477 passed and 1 failed in 562.35 s (the real-REPL test of D103 got ok false from lean_check on a loaded machine; alone it passes in 98.07 s).
+- Gravitational waves of a circular binary (D113, spec 4.29.0): 3 of the 14 gaps of the measure of the 475
+  formulas (radiated power, orbital decay and time to coalescence), that were computed only when the model
+  wrote the formula in `math_eval`. New mode `gw_inspiral` of `eng_calc.gravitation`: from `m1`, `m2` and
+  the separation `r`, the power, the angular momentum and period loss, dr/dt, the time to coalescence, the
+  orbital and wave frequencies, the chirp mass with df/dt, the orbital energy and v/c (quadrupole formula of
+  Peters; warnings above 1% for (v/c)^2 and inside 6 G M / c^2). Contract unchanged (208 operations).
+  14 tests in `tests/test_gw_inspiral_d113.py` against the page formulas in mpmath, the integral of
+  dr / |dr/dt|, the energy and angular momentum balance, the Kepler chain rule for df/dt and dP/dt, and the
+  page values (two solar-mass neutron stars at 1.89e8 m: period 1,002 s and 1.291e13 s to merger, page
+  1,000 s and 1.30e13 s; 917 orbits per second at 20 km, page 918; Earth-Sun 196 W, page 200 W).
+  Mutation check: 37 changed lines out of 37 caught. Full suite 1,492 passed in 247.27 s.
 - Linux tested (Ubuntu 22.04, x86_64, Python 3.12.13, uv 0.11.20): `--self-check` ok in 8.65 s; suite
   1,026 passed and 7 skipped in 44.91 s. macOS is not tested.
 
