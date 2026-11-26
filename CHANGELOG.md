@@ -173,6 +173,19 @@ pages), one group at a time.
   `legendre(200, x)**2` takes 3.23 s. The function table of the spec now lists every name `math_eval` reads
   (43 were missing). 29 tests in `tests/test_parser_functions_d104.py` against mpmath at 30-60 digits, the
   orthogonality integrals and numpy's Gauss-Legendre nodes. Mutation check: 23 changed lines out of 23 caught.
+- Nuclear scattering (D105, spec 4.21.0, `eng_scatter.py`): the 15 missing formulas of nuclear physics
+  (sections "Nuclear scattering theory" and "Fundamental forces"). New `eng_calc.nuclear_scattering` with
+  3 modes: `breit_wigner` (resonance cross section with the statistical factor g, the total width, the
+  lifetime and the peak; k given or from the reduced mass), `rutherford` (cross section, impact parameter,
+  turning point, counts from the fluence; alpha or Z1 and Z2) and `mott` (two identical particles of spin s
+  with the interference term; the misprints of the page corrected). New `math_solve.born_scattering`: the
+  first Born approximation for a central potential V(r), amplitude and cross section in q and in theta, a
+  Coulomb tail regularized (V = alpha / r gives Rutherford), numbers for any V(r) with `at` (Woods-Saxon has
+  no closed form: with `at` 0.31 s to 1.56 s). SymPy integrates with the Meijer G method only: Woods-Saxon gave up in
+  0.10 s instead of 16.03 s (over the 5 s limit), the closed forms of 15 potentials are the same. New units:
+  wavenumber (`1/fm`), coupling (`MeV*fm`), fluence (`1/cm2`). The 7 Lagrangians of the fundamental forces are
+  definitions with no number to compute: counted as text. `eng_calc` 84 operations, contract 202 (the README
+  said 82 engineering operations since D102, now 84). Found measuring: `compile_mp` (D104) had a step between the rounded and the exact path of a sum (up to 50 units in the last place, and 1e-30 when mpmath raises the precision, as `quadosc` does to 340 bits, because its constants kept the digits of the compilation), so `quadosc` did not converge: Woods-Saxon with `at` took 17.68 s. Now it computes with 10 guard digits, rounds once and rounds each constant at the working precision: 1.56 s, same value. 65 tests: 37 in `tests/test_nuclear_scattering_d105.py` against the Lorentzian line (half height, area), the neutron de Broglie wavelength, hbar in eV s, the classical relation dsigma/dOmega = b / sin(theta) |db/dtheta| by finite differences, energy conservation at the turning point and the symmetrized Coulomb amplitudes computed with mpmath; 26 in `tests/test_born_d105.py` against the textbook Yukawa, gaussian and square-well amplitudes, the Rutherford cross section of `eng_calc` and the Fourier integral of QUADPACK (QAWF), the time limit and the rounding of `compile_mp`. Mutation check: 59 changed lines out of 59 caught (the first run caught 21 of 33 in `eng_scatter.py`: `pytest.approx` kept its default abs = 1e-12, which accepts any cross section of 1e-28 m2; fixed in the test).
 - Linux tested (Ubuntu 22.04, x86_64, Python 3.12.13, uv 0.11.20): `--self-check` ok in 8.65 s; suite
   1,026 passed and 7 skipped in 44.91 s. macOS is not tested.
 

@@ -3,6 +3,11 @@
 D104: a sum whose terms cancel (sum of |terms| more than _CANCEL times |sum|) is computed again with exact
 rationals from the same inputs and rounded once. Measured on 2026-11-26 before D104: the expanded
 legendre(100, x) had an error 9.2e19 times its largest value on [-1, 1] in floating point.
+
+D105: compile_mp works with _MP_GUARD more digits than the caller and rounds the result once, and its
+constants follow the working precision (mpmath.quadosc raises it to 340 bits inside). Before, the rounded and
+the exact path of a sum differed by up to 50 units in the last place at the caller's precision, and by 1e-30
+(the digits of the constants) at a raised one: the Born integral of Woods-Saxon took 17.68 s instead of 1.4 s.
 """
 
 from __future__ import annotations
@@ -18,6 +23,7 @@ from .errors import ToolError
 
 _CANCEL = 100.0  # digits lost above about 2: the sum is recomputed exactly
 _EXACT_POW_MAX = 256  # larger integer powers enter the exact sum as their rounded value
+_MP_GUARD = 10  # digits compile_mp adds to the caller's precision (constants and evaluation)
 
 
 def _sech(v: float) -> float:
@@ -325,7 +331,13 @@ def to_mp(value: Any, dps: int) -> Any:
 
 
 def compile_mp(expr: Any, symbols: Sequence[sp.Symbol], dps: int) -> Callable[..., Any]:
-    """Like compile_expr but with mpmath at precision dps (to be set before the call)."""
+    """Like compile_expr but with mpmath at precision dps (to be set before the call).
+
+    The function computes with _MP_GUARD more digits and rounds its result to the caller's precision, and each
+    constant is rounded at the working precision of the call (kept once per precision), so the switch to the
+    exact sum of D104 leaves no step that an adaptive mpmath routine (quad, quadosc, findroot) would chase,
+    also when it raises the precision.
+    """
     import mpmath
 
     index = {s: i for i, s in enumerate(symbols)}
@@ -340,8 +352,19 @@ def compile_mp(expr: Any, symbols: Sequence[sp.Symbol], dps: int) -> Callable[..
             i = index[e]
             return lambda a: a[i]
         if e.is_number:
-            c = to_mp(e, dps)
-            return lambda a: c
+            if e.is_Integer:
+                c = mpmath.mpf(int(e))  # exact at any precision
+                return lambda a: c
+            kept: dict[int, Any] = {}
+
+            def const(a: Sequence[Any], e: Any = e, kept: dict[int, Any] = kept) -> Any:
+                prec = mpmath.mp.prec
+                c = kept.get(prec)
+                if c is None:
+                    c = kept[prec] = to_mp(e, mpmath.mp.dps)
+                return c
+
+            return const
         if isinstance(e, sp.Add):
             fs = [build(x) for x in e.args]
             exact: list[Callable[[Sequence[Any]], tuple[int, int]]] = []
@@ -386,12 +409,18 @@ def compile_mp(expr: Any, symbols: Sequence[sp.Symbol], dps: int) -> Callable[..
             return lambda a: f1(g(a))
 
         def slow(a: Sequence[Any]) -> Any:
-            subs = {
-                s: sp.Float(mpmath.nstr(v, dps + 5), dps + 5) for s, v in zip(syms, a, strict=True)
-            }
-            return to_mp(e.evalf(dps + 5, subs=subs), dps)
+            d = mpmath.mp.dps + 5
+            subs = {s: sp.Float(mpmath.nstr(v, d), d) for s, v in zip(syms, a, strict=True)}
+            return to_mp(e.evalf(d, subs=subs), mpmath.mp.dps)
 
         return slow
 
-    f = build(expr if isinstance(expr, sp.Basic) else sp.Float(expr))
-    return lambda *vals: f(vals)
+    with mpmath.workdps(dps + _MP_GUARD):
+        f = build(expr if isinstance(expr, sp.Basic) else sp.Float(expr))
+
+    def run(*vals: Any) -> Any:
+        with mpmath.workdps(mpmath.mp.dps + _MP_GUARD):
+            v = f(vals)
+        return +v  # rounded once to the caller's precision
+
+    return run

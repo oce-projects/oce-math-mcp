@@ -16,7 +16,7 @@ from sympy.integrals import manualintegrate as mi
 from ..envelope import Ctx
 from ..errors import ToolError
 from ..expr import Grammar, check_identifier, parse, parse_relation, split_equation, split_list
-from ..numfunc import compile_expr, compile_mp
+from ..numfunc import compile_expr, compile_mp, to_mp
 from .common import (
     SOLVE_FUNCS,
     auto_vars,
@@ -2479,4 +2479,304 @@ def _central_force(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     ctx.step(
         "Back-check: Newton's radial equation mu (r'' - r theta'^2) = F with theta' = l / (mu r^2)."
     )
+    return out
+
+
+# ------------------------------------------------------------------ born_scattering (D105)
+
+_BORN_EXAMPLE = '{"operation": "born_scattering", "potential_energy": "-V0*exp(-r/a)/r"}'
+_BORN_RESERVED = ("q", "k", "theta", "mu", "hbar")
+_BORN_DPS = 20  # digits of the numerical integral (mpmath.quad and quadosc)
+_BORN_CHECK_Q = ((3, 2), (7, 3))  # values of q for the numerical check of a closed form
+_BORN_CHECK_REL = 1e-12
+_BORN_SIMPLIFY_OPS = 60  # simplify a small closed form only; with a Piecewise simplify took 18.7 s
+_BORN_MAX_BREAKS = 50
+_BORN_BAD = (sp.zoo, sp.nan, sp.oo, -sp.oo)
+
+
+def _born_symbols() -> dict[str, Any]:
+    return {n: sp.Symbol(n, positive=True) for n in ("r", *_BORN_RESERVED)}
+
+
+def _born_potential(args: dict[str, Any], r: Any) -> Any:
+    """V(r) with r and every constant positive; the names of the result are not allowed in V."""
+    text = _need(args, "potential_energy", _BORN_EXAMPLE)
+    v = expr_of(text, grammar(None))
+    for s in v.free_symbols:
+        if s.name in _BORN_RESERVED:
+            raise ToolError(
+                "INVALID_ARGUMENT",
+                f"'{s.name}' is a name of the result (f(q), q = 2 k sin(theta/2), mu the reduced mass, "
+                "hbar): rename that constant of V.",
+                _BORN_EXAMPLE,
+            )
+    v = v.xreplace({s: sp.Symbol(s.name, positive=True) for s in v.free_symbols})
+    if r not in v.free_symbols:
+        raise ToolError(
+            "INVALID_ARGUMENT", "V must depend on r (the distance from the centre).", _BORN_EXAMPLE
+        )
+    return v
+
+
+def _born_limit(e: Any, r: Any, point: Any) -> Any:
+    """Limit of e for r -> point (0 from above, or oo); a Heaviside step is replaced by its value there
+    first. None when SymPy cannot say."""
+
+    def step(*a: Any) -> Any:
+        side = sp.limit(a[0], r, point, "+")
+        if side == sp.oo or side.is_positive:
+            return sp.Integer(1)
+        if side == -sp.oo or side.is_negative:
+            return sp.Integer(0)
+        return sp.Heaviside(*a)
+
+    try:
+        lim = sp.limit(e.replace(sp.Heaviside, step), r, point, "+")
+    except (NotImplementedError, ValueError, TypeError, AttributeError):
+        return None
+    return None if lim.has(sp.Limit) else lim
+
+
+def _born_split(v: Any, r: Any) -> tuple[Any, Any]:
+    """(L, V - L/r): a Coulomb tail L / r goes apart; MATH_ERROR when the integral cannot converge."""
+    near = _born_limit(r**3 * v, r, sp.Integer(0))
+    if near is not None and near != 0:
+        raise ToolError(
+            "MATH_ERROR",
+            "The Born integral does not converge at r -> 0: r^2 V(r) must be integrable there "
+            f"(V weaker than 1/r^3; here r^3 V(r) -> {near}).",
+        )
+    far = _born_limit(r * v, r, sp.oo)
+    if far is None or far == 0:
+        return sp.Integer(0), v
+    if far.has(*_BORN_BAD, sp.AccumBounds, r):
+        raise ToolError(
+            "MATH_ERROR",
+            "The Born integral does not converge: V(r) must fall at least as 1/r for r -> oo "
+            f"(here r V(r) -> {far}).",
+        )
+    return far, sp.expand(v - far / r)
+
+
+def _born_integral(rest: Any, r: Any, q: Any) -> Any:
+    """integral_0^oo r sin(q r) rest(r) dr for a short-range rest; None when SymPy finds no closed form.
+
+    Only the Meijer G method (meijerg=True): on 15 potentials it gave the same closed forms as the default
+    strategy in the same time, and it gives up on Woods-Saxon in 0.10 s instead of more than 12 s (26/11/2026).
+    """
+    if rest == 0:
+        return sp.Integer(0)
+    val = sp.integrate(r * sp.sin(q * r) * rest, (r, 0, sp.oo), conds="none", meijerg=True)
+    if val.has(sp.Integral):
+        return None
+    if val.has(*_BORN_BAD, sp.AccumBounds):
+        raise ToolError(
+            "MATH_ERROR", f"The Born integral of this V(r) does not converge (SymPy: {val})."
+        )
+    return sp.unpolarify(val)
+
+
+def _born_tidy(e: Any) -> Any:
+    if e.has(sp.Piecewise) or sp.count_ops(e) > _BORN_SIMPLIFY_OPS:
+        return e
+    return sp.simplify(e)
+
+
+def _born_breaks(e: Any, r: Any) -> list[Any]:
+    """Positive r (numbers) where a Heaviside or a Piecewise condition of e switches, sorted."""
+    args = [h.args[0] for h in e.atoms(sp.Heaviside)]
+    for pw in e.atoms(sp.Piecewise):
+        for _, cond in pw.args:
+            rels = (
+                cond.atoms(sp.core.relational.Relational) if isinstance(cond, sp.Basic) else set()
+            )
+            args.extend(lhs - rhs for lhs, rhs, _ in map(rel_parts, rels))
+    found: set[Any] = set()
+    for a in args:
+        if not a.has(r) or a.free_symbols - {r}:
+            continue
+        try:
+            poly = sp.Poly(a, r)
+        except sp.PolynomialError:
+            continue
+        for root in poly.nroots(n=_BORN_DPS):
+            re_, im_ = root.as_real_imag()
+            if im_ == 0 and re_ > 0:
+                found.add(sp.Float(re_, _BORN_DPS))
+    return sorted(found)[:_BORN_MAX_BREAKS]
+
+
+def _born_piece(e: Any, r: Any, at_r: Any) -> Any:
+    """e on one interval between breaks: each Heaviside is its value and each Piecewise its branch at r = at_r,
+    so the integrand is smooth there (a Heaviside evaluated point by point took 18.9 s)."""
+    swap: dict[Any, Any] = {}
+    for h in e.atoms(sp.Heaviside):
+        val = h.args[0].subs(r, at_r)
+        if val.is_positive or val.is_negative:
+            swap[h] = sp.Integer(1 if val.is_positive else 0)
+    for pw in e.atoms(sp.Piecewise):
+        for pair in pw.args:
+            cond = pair.cond.subs(r, at_r) if isinstance(pair.cond, sp.Basic) else pair.cond
+            if cond is sp.true:
+                swap[pw] = pair.expr
+                break
+    return e.xreplace(swap)
+
+
+def _born_numeric(rest: Any, r: Any, qv: Any) -> Any:
+    """integral_0^oo r sin(q r) rest(r) dr with numbers only: mpmath.quad on each interval between the breaks of
+    a step, then mpmath.quadosc (period 2 pi / q) from the last break."""
+    import mpmath
+
+    f = r * sp.sin(qv * r) * rest
+    pts = [sp.Integer(0), *_born_breaks(rest, r)]
+    with mpmath.workdps(_BORN_DPS):
+        total = mpmath.mpf(0)
+        for a, b in itertools.pairwise(pts):
+            piece = _born_piece(f, r, (a + b) / 2)
+            if piece != 0:
+                total += mpmath.quad(
+                    compile_mp(piece, [r], _BORN_DPS), [to_mp(a, _BORN_DPS), to_mp(b, _BORN_DPS)]
+                )
+        last = _born_piece(f, r, pts[-1] + 1)
+        if last != 0:
+            fn = compile_mp(last, [r], _BORN_DPS)
+            total += mpmath.quadosc(
+                fn, [to_mp(pts[-1], _BORN_DPS), mpmath.inf], omega=to_mp(qv, _BORN_DPS)
+            )
+        return total
+
+
+def _born_verified(rest: Any, i_rest: Any, r: Any, q: Any) -> bool:
+    """The closed form against the numerical integral, constants 7/5, 8/5, ... in name order, 2 values of q."""
+    import mpmath
+
+    if rest == 0:
+        return True  # only the Coulomb tail: L / q is the limit eps -> 0+ of L q / (q^2 + eps^2)
+    names = sorted(rest.free_symbols - {r}, key=lambda s: s.name)
+    fixed = {s: sp.Rational(7 + i, 5) for i, s in enumerate(names)}
+    for qn, qd in _BORN_CHECK_Q:
+        qv = sp.Rational(qn, qd)
+        try:
+            want = _born_numeric(rest.subs(fixed), r, qv)
+            with mpmath.workdps(_BORN_DPS):
+                got = to_mp(i_rest.subs({**fixed, q: qv}), _BORN_DPS)
+                if not abs(got - want) <= _BORN_CHECK_REL * max(1, abs(want)):
+                    return False
+        except (TypeError, ValueError, ZeroDivisionError, ToolError):
+            return False
+    return True
+
+
+def _born_at(at: Any, v: Any, sy: dict[str, Any]) -> tuple[dict[Any, Any], Any]:
+    """Numbers of 'at' for the constants of V, mu and hbar; q from q or from k and theta."""
+    if not isinstance(at, dict) or not at:
+        raise ToolError(
+            "INVALID_ARGUMENT",
+            "'at' is an object {name: number}.",
+            '{"V0": 1, "a": 1, "mu": 1, "hbar": 1, "q": 1}',
+        )
+    consts = {s.name: s for s in v.free_symbols if s != sy["r"]}
+    known = {**consts, **{n: sy[n] for n in _BORN_RESERVED}}
+    nums: dict[str, Any] = {}
+    for name, raw in at.items():
+        if name not in known:
+            raise ToolError(
+                "INVALID_ARGUMENT",
+                f"at.{name} is not a constant of V(r) nor mu, hbar, q, k or theta.",
+            )
+        if (
+            isinstance(raw, bool)
+            or not isinstance(raw, int | float)
+            or not math.isfinite(raw)
+            or raw <= 0
+        ):
+            raise ToolError(
+                "INVALID_ARGUMENT",
+                f"at.{name} must be a finite number > 0 (the constants are positive: write a sign in V).",
+            )
+        nums[name] = sp.Rational(repr(raw)) if isinstance(raw, float) else sp.Integer(raw)
+    for name in (*sorted(consts), "mu", "hbar"):
+        if name not in nums:
+            raise ToolError(
+                "INVALID_ARGUMENT",
+                f"'at' has no number for '{name}': give every constant of V(r), mu, hbar and q (or k and theta).",
+            )
+    with_kt = "k" in nums or "theta" in nums
+    if ("q" in nums) == with_kt or (with_kt and not ("k" in nums and "theta" in nums)):
+        raise ToolError(
+            "INVALID_ARGUMENT",
+            "'at' needs q, or k and theta (q = 2 k sin(theta/2)): one of the two.",
+        )
+    if with_kt and nums["theta"] > sp.pi:
+        raise ToolError(
+            "INVALID_ARGUMENT", "at.theta is the scattering angle in radians, 0 < theta <= pi."
+        )
+    qv = nums["q"] if "q" in nums else 2 * nums["k"] * sp.sin(nums["theta"] / 2)
+    subs = {consts[n]: nums[n] for n in consts}
+    subs.update({sy["mu"]: nums["mu"], sy["hbar"]: nums["hbar"]})
+    return subs, qv
+
+
+def _born_values(at: Any, v: Any, tail: Any, rest: Any, sy: dict[str, Any]) -> dict[str, float]:
+    import mpmath
+
+    subs, qv = _born_at(at, v, sy)
+    r = sy["r"]
+    integral = _born_numeric(rest.subs(subs), r, qv)
+    with mpmath.workdps(_BORN_DPS):
+        qm = to_mp(qv, _BORN_DPS)
+        mu, hbar = to_mp(subs[sy["mu"]], _BORN_DPS), to_mp(subs[sy["hbar"]], _BORN_DPS)
+        f = -2 * mu / (hbar**2 * qm) * (integral + to_mp(tail.subs(subs), _BORN_DPS) / qm)
+        if isinstance(f, mpmath.mpc):
+            if abs(f.imag) > 1e-15 * abs(f):
+                raise ToolError("INVALID_ARGUMENT", "V(r) is not real at these numbers.")
+            f = f.real
+        return {"q": float(qm), "f": float(f), "dsigma_dOmega": float(f * f)}
+
+
+@op("born_scattering")
+def _born_scattering(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
+    sy = _born_symbols()
+    r, q, k, th, mu, hbar = (sy[n] for n in ("r", "q", "k", "theta", "mu", "hbar"))
+    v = _born_potential(args, r)
+    tail, rest = _born_split(v, r)
+    if tail != 0:
+        ctx.warn(
+            f"V(r) falls as L/r for r -> oo (a Coulomb tail, L = {tail}): the integral of r sin(q r) V(r) does "
+            "not converge; the part L/r gives L/q, the limit epsilon -> 0+ of the integral with exp(-epsilon*r) "
+            "(a screened potential)."
+        )
+    ctx.formula = (
+        "f(q) = -(2 mu / hbar^2) (1/q) integral_0^oo r sin(q r) V(r) dr, dsigma/dOmega = |f|^2, "
+        "q = 2 k sin(theta/2)"
+    )
+    if args.get("at") is not None:
+        vals = _born_values(args["at"], v, tail, rest, sy)
+        ctx.formatted = f"f = {vals['f']:.12g}, dsigma/dOmega = {vals['dsigma_dOmega']:.12g}"
+        ctx.step("Numerical integral: mpmath.quad up to the steps of V, then mpmath.quadosc.")
+        return {"potential": str(v), "regularized": tail != 0, "values": vals}
+    i_rest = _born_integral(rest, r, q)
+    if i_rest is None:
+        raise ToolError(
+            "MATH_ERROR",
+            "SymPy finds no closed form of the Born integral for this V(r). Give 'at' (numbers for the "
+            "constants, mu, hbar and q, or k and theta) for the numerical value.",
+            '{"operation": "born_scattering", "potential_energy": "-V0/(1 + exp((r - R)/a))", '
+            '"at": {"V0": 50, "R": 4, "a": 0.6, "mu": 1, "hbar": 1, "q": 1}}',
+        )
+    amp = _born_tidy(-2 * mu / (hbar**2 * q) * (i_rest + tail / q))
+    dsig = _born_tidy(sp.Abs(amp) ** 2)
+    sub = {q: 2 * k * sp.sin(th / 2)}
+    out = {
+        "potential": str(v),
+        "amplitude": str(amp),
+        "dsigma_dOmega": str(dsig),
+        "amplitude_theta": str(_born_tidy(amp.subs(sub))),
+        "dsigma_dOmega_theta": str(_born_tidy(dsig.subs(sub))),
+        "regularized": tail != 0,
+        "verified": _born_verified(rest, i_rest, r, q),
+    }
+    ctx.formatted = f"f(q) = {out['amplitude']}"
+    ctx.step("Back-check: the closed form against mpmath.quadosc at 2 values of q.")
     return out

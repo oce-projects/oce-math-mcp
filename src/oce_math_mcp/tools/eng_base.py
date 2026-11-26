@@ -100,6 +100,9 @@ _EXTRA: dict[str, dict[str, float]] = {
         "MeV/c": 1e6 * _EV / _C,
         "GeV/c": 1e9 * _EV / _C,
     },
+    "wavenumber": {"1/m": 1.0, "1/cm": 1e2, "1/nm": 1e9, "1/pm": 1e12, "1/fm": 1e15},
+    "coupling": {"J*m": 1.0, "MeV*fm": 1e6 * _EV * 1e-15, "eV*nm": _EV * 1e-9},
+    "fluence": {"1/m2": 1.0, "1/cm2": 1e4, "1/mm2": 1e6},
     "thermal_expansion": {
         "1/K": 1.0,
         "1/C": 1.0,
@@ -163,6 +166,9 @@ _KIND: dict[str, tuple[str, str, str]] = {
     "activity": ("a radioactive activity", "Bq", "MBq"),
     "momentum": ("a momentum", "kg*m/s", "MeV/c"),
     "decay_constant": ("a decay constant", "1/s", "1/y"),
+    "wavenumber": ("a wavenumber", "1/m", "1/fm"),
+    "coupling": ("a coupling alpha = Z1 Z2 e^2 / (4 pi eps0) (energy x length)", "J*m", "MeV*fm"),
+    "fluence": ("a number of particles per area (fluence)", "1/m2", "1/cm2"),
 }
 _EXAMPLE = (
     '{"operation": "beam_calc", "params": {"support": "simply_supported", "load": "point", '

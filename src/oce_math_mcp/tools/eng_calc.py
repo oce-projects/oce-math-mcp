@@ -29,7 +29,8 @@ eng_kinetic: kinetic theory of gases, D87;
 eng_grav: Newtonian gravitation, D88;
 eng_stat: statistical mechanics, D98;
 eng_waves: general wave functions and modulation, D100;
-eng_frames: reference frames and Euler's equations of a rigid body, D102); this module loads them and
+eng_frames: reference frames and Euler's equations of a rigid body, D102;
+eng_scatter: nuclear scattering, Breit-Wigner, Rutherford and Mott, D105); this module loads them and
 exposes `handle` and `OPS`.
 """
 
@@ -64,6 +65,7 @@ from . import (
     eng_psychro,
     eng_rad,
     eng_rolling,
+    eng_scatter,
     eng_sci,
     eng_solid,
     eng_stat,
@@ -107,6 +109,7 @@ __all__ = [
     "eng_psychro",
     "eng_rad",
     "eng_rolling",
+    "eng_scatter",
     "eng_sci",
     "eng_solid",
     "eng_stat",
