@@ -255,6 +255,17 @@ pages), one group at a time.
   a cut boundary `<` to `<=` (drops one point less than 0.001 px from a jump). Full suite
   1,448 passed in 213.33 s. The
   README counts of `math_solve` (34, now 39) and `eng_calc` (80, now 89) were stale and are corrected.
+- Quantum statistics of a free gas (D112, spec 4.28.0): 3 of the 14 gaps of the measure of the 475
+  formulas (Fermi-Dirac, Bose-Einstein and the density of states), that were computed only when the model
+  wrote the formula in `math_eval`. New modes of `eng_calc.statistical_mechanics`: `density_of_states`
+  (g(E) per volume and energy, states below E, Fermi wave number, energy and temperature from the number
+  density, totals with V; warning above 1% of m c^2) and `occupation` (Fermi-Dirac, Bose-Einstein and
+  Maxwell-Boltzmann mean occupation with ln n, without overflow or cancellation; Bose-Einstein with
+  E <= mu is an error, Maxwell-Boltzmann warns when n > 0.1). Contract unchanged (208 operations).
+  30 tests in `tests/test_quantum_statistics_d112.py` against the page formula, the mpmath integral of
+  g(E) (the states below E_F hold exactly n), the page range of metal Fermi energies (2-10 eV; n =
+  8.47e28 per m3 gives 7.03 eV) and mpmath occupation numbers at 60 digits from x = 1e-12 to 800.
+  Mutation check: 32 changed lines out of 32 caught. Full suite 1,477 passed and 1 failed in 562.35 s (the real-REPL test of D103 got ok false from lean_check on a loaded machine; alone it passes in 98.07 s).
 - Linux tested (Ubuntu 22.04, x86_64, Python 3.12.13, uv 0.11.20): `--self-check` ok in 8.65 s; suite
   1,026 passed and 7 skipped in 44.91 s. macOS is not tested.
 

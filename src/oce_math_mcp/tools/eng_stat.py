@@ -14,6 +14,16 @@ the local offline library; "Maxwell-Juttner distribution" and "Sackur-Tetrode eq
   Z_t = (2 pi m k T)^(3/2) V / h^3 = V / Lambda^3, vibrational Z_v = 1 / (1 - exp(-h nu / k T)) (energy zero at
   the ground state), rotational Z_r = 2 I k T / (sigma hbar^2). For N molecules U = N k T^2 d ln Z / dT and
   S = U / T + N k ln Z - N k ln N + N k (indistinguishable molecules, Stirling); A = U - T S.
+
+D112 (sources: "List of equations in quantum mechanics", density of states of a free particle in 3D,
+N(E) = 8 sqrt(2) pi m^(3/2) E^(1/2) / h^3; "Fermi energy", E_F = hbar^2 / (2 m) (3 pi^2 n)^(2/3), metals
+2 - 10 eV; "Fermi-Dirac statistics", "Bose-Einstein statistics", "Maxwell-Boltzmann statistics"):
+- Density of states per volume and energy, g(E) = g_s / (4 pi^2) (2 m / hbar^2)^(3/2) sqrt(E) (the page form for
+  g_s = 2); states per volume below E, (2/3) g(E) E. From the number density n: k_F = (6 pi^2 n / g_s)^(1/3),
+  E_F = hbar^2 k_F^2 / (2 m), T_F = E_F / k, g(E_F) = 3 n / (2 E_F). Non-relativistic: warning above 1% of m c^2.
+- Mean occupation of a state at E with x = (E - mu) / (k T): Fermi-Dirac 1 / (exp(x) + 1), Bose-Einstein
+  1 / (exp(x) - 1) (only E > mu), Maxwell-Boltzmann exp(-x). Written as exp(-x) / (1 + exp(-x)), 1 / expm1(x)
+  and with ln n, so there is no overflow at large |x| and no cancellation at small x.
 """
 
 from __future__ import annotations
@@ -41,6 +51,7 @@ from .eng_base import (
     temperature,
     units_for,
 )
+from .eng_modern import _particle  # pyright: ignore[reportPrivateUsage]
 
 K_B = lookup("Boltzmann constant")[1]
 H = lookup("Planck constant")[1]
@@ -51,12 +62,21 @@ _LN2 = math.log(2)
 _ROT_WARN = (
     10.0  # the classical Z_r is off by about theta_rot / (3 T): over 3% below T = 10 theta_rot
 )
+_EV = lookup("elementary charge")[1]
+_NR_WARN = (
+    0.01  # kinetic energy above 1% of m c^2: the non-relativistic g(E) is off by about E / (m c^2)
+)
+_LN_FLOAT = 700.0  # |ln n| above this: n is beyond the floating-point range
+_MB_WARN = math.log(0.1)  # Maxwell-Boltzmann needs n << 1
+_STATS = ("fermi_dirac", "bose_einstein", "maxwell_boltzmann")
 
 _MODES: dict[str, set[str]] = {
     "entropy": {"probabilities", "omega", "ln_omega"},
     "entropy_heat": {"Q", "T", "C", "T1", "T2", "T_reservoir"},
     "maxwell_juttner": {"T", "m", "p", "gamma"},
     "partition_functions": {"T", "m", "M_molar", "V", "nu", "omega", "I", "sigma", "N", "n_mol"},
+    "density_of_states": {"particle", "m", "E", "n", "V", "g_s"},
+    "occupation": {"statistics", "E", "mu", "T", "g"},
 }
 _UNITS = {
     "S": "J/K",
@@ -92,6 +112,22 @@ _UNITS = {
     "U": "J",
     "C_V": "J/K",
     "A": "J",
+    "g_E": "1/(J*m3)",
+    "N_below": "1/m3",
+    "g_E_total": "1/J",
+    "N_below_total": "1",
+    "g_s": "1",
+    "E_F": "J",
+    "E_F_eV": "eV",
+    "T_F": "K",
+    "k_F": "1/m",
+    "g_E_F": "1/(J*m3)",
+    "N_total": "1",
+    "g_E_F_total": "1/J",
+    "n": "1",
+    "ln_n": "1",
+    "x": "1",
+    "n_total": "1",
 }
 
 
@@ -105,6 +141,8 @@ def _statistical(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         "entropy_heat": _mode_entropy_heat,
         "maxwell_juttner": _mode_juttner,
         "partition_functions": _mode_partition,
+        "density_of_states": _mode_dos,
+        "occupation": _mode_occupation,
     }[mode](p, ctx)
     ctx.units = units_for(out, _UNITS)
     return out
@@ -343,4 +381,105 @@ def _mode_partition(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         ctx.formatted = f"ln Z = {fmt_sig(ln_z, 8)} per molecule (give N or n_mol for U and S)."
     if "Z" not in out:
         ctx.warn("Z is beyond the floating-point range: use ln_Z.")
+    return out
+
+
+def _g_of_e(m: float, e: float, g_s: int) -> float:
+    """Density of states per volume and energy of a free particle in 3D (non-relativistic)."""
+    return g_s / (4 * math.pi**2) * (2 * m / (HBAR * HBAR)) ** 1.5 * math.sqrt(e)
+
+
+def _mode_dos(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
+    m, _, _ = _particle(p)
+    g_s = integer(p, "g_s", 1) if p.get("g_s") is not None else 2
+    key = one_of(
+        p, ("E", "n"), "the density of states (the energy E, or the number density n in 1/m3)"
+    )
+    vol = qty(p, "V", "volume", need=False)
+    out: dict[str, Any] = {"g_s": g_s}
+    if key == "E":
+        e = need(p, "E", "energy")
+        g = _g_of_e(m, e, g_s)
+        out["g_E"] = g
+        out["N_below"] = 2 * g * e / 3
+        if vol is not None:
+            out["g_E_total"] = g * vol
+            out["N_below_total"] = out["N_below"] * vol
+        ctx.formatted = (
+            f"g(E) = {fmt_sig(g, 6)} 1/(J m3); {fmt_sig(out['N_below'], 6)} states per m3 below E."
+        )
+    else:
+        n = need(p, "n", None)
+        k_f = (6 * math.pi**2 * n / g_s) ** (1 / 3)
+        e = HBAR * HBAR * k_f * k_f / (2 * m)
+        g_f = _g_of_e(m, e, g_s)
+        out.update({"k_F": k_f, "E_F": e, "E_F_eV": e / _EV, "T_F": e / K_B, "g_E_F": g_f})
+        if vol is not None:
+            out["N_total"] = n * vol
+            out["g_E_F_total"] = g_f * vol
+        ctx.formatted = f"E_F = {fmt_sig(e / _EV, 6)} eV, T_F = {fmt_sig(e / K_B, 6)} K."
+    ctx.formula = (
+        "g(E) = g_s / (4 pi^2) (2 m / hbar^2)^(3/2) sqrt(E) (for g_s = 2: 8 sqrt(2) pi m^(3/2) sqrt(E) / h^3); "
+        "states below E: (2/3) g(E) E; k_F = (6 pi^2 n / g_s)^(1/3), E_F = hbar^2 k_F^2 / (2 m), T_F = E_F / k"
+    )
+    rest = m * C_LIGHT * C_LIGHT
+    if e > _NR_WARN * rest:
+        ctx.warn(
+            f"The energy is {fmt_sig(100 * e / rest, 3)}% of m c^2: the non-relativistic formulas have "
+            "corrections of the order of E / (m c^2)."
+        )
+    return out
+
+
+def _occupation(stat: str, x: float) -> tuple[float | None, float]:
+    """(n, ln n) at x = (E - mu) / (k T); n is None beyond the floating-point range."""
+    if stat == "fermi_dirac":
+        if x > 0:
+            ex = math.exp(-x)
+            n, ln_n = ex / (1 + ex), -x - math.log1p(ex)
+        else:
+            ex = math.exp(x)
+            n, ln_n = 1 / (1 + ex), -math.log1p(ex)
+    elif stat == "bose_einstein":
+        ln_n = -x - math.log(-math.expm1(-x))
+        n = 1 / math.expm1(x) if ln_n > -_LN_FLOAT else 0.0
+    else:
+        ln_n = -x
+        n = math.exp(-x) if ln_n < _LN_FLOAT else 0.0
+    return (n if abs(ln_n) < _LN_FLOAT else None), ln_n
+
+
+def _mode_occupation(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
+    stat = choice(p, "statistics", _STATS)
+    e = need(p, "E", "energy", positive=False)
+    mu = need(p, "mu", "energy", positive=False)
+    t = temperature(p, "T")
+    assert t is not None
+    g = integer(p, "g", 1) if p.get("g") is not None else None
+    x = (e - mu) / (K_B * t)
+    if stat == "bose_einstein" and x <= 0:
+        raise ToolError(
+            "INVALID_ARGUMENT",
+            "Bose-Einstein needs E > mu: the occupation diverges at E = mu and is negative below.",
+        )
+    n, ln_n = _occupation(stat, x)
+    out: dict[str, Any] = {"x": x, "ln_n": ln_n}
+    ctx.formula = {
+        "fermi_dirac": "n = 1 / (exp((E - mu) / (k T)) + 1) (Fermi-Dirac)",
+        "bose_einstein": "n = 1 / (exp((E - mu) / (k T)) - 1) (Bose-Einstein, E > mu)",
+        "maxwell_boltzmann": "n = exp(-(E - mu) / (k T)) (Maxwell-Boltzmann, the limit n << 1)",
+    }[stat] + "; n_total = g n for a level of degeneracy g"
+    if n is None:
+        ctx.warn("n is beyond the floating-point range: use ln_n.")
+        ctx.formatted = f"x = {fmt_sig(x, 6)}, ln n = {fmt_sig(ln_n, 8)}."
+    else:
+        out["n"] = n
+        if g is not None:
+            out["n_total"] = g * n
+        ctx.formatted = f"x = {fmt_sig(x, 6)}, n = {fmt_sig(n, 8)}."
+    if stat == "maxwell_boltzmann" and ln_n > _MB_WARN:
+        ctx.warn(
+            "n > 0.1: Maxwell-Boltzmann is the limit n << 1 of the quantum statistics; "
+            "use fermi_dirac or bose_einstein."
+        )
     return out
