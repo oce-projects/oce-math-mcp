@@ -9,6 +9,14 @@ Q and thresholds use the nuclear masses `M_atom - Z m_e` and count electrons and
 positrons explicitly; the binding energy of the electrons is neglected, as in the Q tables of AME2020.
 The years of NUBASE2020 are tropical years (365.2422 d); the years written in the parameters are
 Julian (365.25 d, eng_base).
+
+Liquid-drop model (D115): nuclear radius r = r0 A^(1/3) with r0 = 1.2 fm and the semi-empirical binding energy
+E_B = a_V A - a_S A^(2/3) - a_C Z (Z - 1) / A^(1/3) - a_A (N - Z)^2 / A + delta a_P A^k_P (delta = +1 for even N
+and Z, -1 for odd N and Z, 0 for odd A), both from "List of equations in nuclear and particle physics"; the
+coefficients are the column "Least-squares fit (1)" of "Semi-empirical mass formula" (15.8, 18.3, 0.714, 23.2,
+12 MeV, k_P = -1/2), the set of the list page: over the 2,455 measured ground states with A >= 20 it is off from
+AME2020 by 3.855 MeV rms (the other columns with Z (Z - 1) by 7.2-8.6 MeV; the table's footnotes do not say which
+columns use Z^2 or (Z - A/2)^2).
 """
 
 from __future__ import annotations
@@ -25,7 +33,7 @@ from typing import Any
 from ..constants import lookup
 from ..envelope import Ctx
 from ..errors import ToolError
-from .eng_base import choice, fmt_sig, need, one_of, only, op, qty, units_for
+from .eng_base import choice, fmt_sig, integer, need, one_of, only, op, qty, units_for
 
 _DATA = Path(__file__).resolve().parents[1] / "data" / "nuclides.json.gz"
 ME_KEV = lookup("electron mass energy equivalent in MeV")[1] * 1e3
@@ -206,10 +214,110 @@ def molar_mass_kg(key: str) -> float:
 
 # ------------------------------------------------------------------ nuclide_data
 
+_SEMF_PAGE = {"a_V": 15.8, "a_S": 18.3, "a_C": 0.714, "a_A": 23.2, "a_P": 12.0, "k_P": -0.5}
+_R0 = 1.2e-15  # m
+_SEMF_LIGHT = 20  # below this A the liquid drop fits poorly (no shell structure)
+_MODEL_UNITS = {
+    "r0_fm": "fm",
+    "radius_fm": "fm",
+    "semf_volume_MeV": "MeV",
+    "semf_surface_MeV": "MeV",
+    "semf_coulomb_MeV": "MeV",
+    "semf_asymmetry_MeV": "MeV",
+    "semf_pairing_MeV": "MeV",
+    "semf_binding_MeV": "MeV",
+    "semf_binding_per_nucleon_MeV": "MeV",
+    "semf_minus_ame_MeV": "MeV",
+    "semf_error_percent": "%",
+}
 
-@op("nuclide_data", ("nuclide",))
+
+@lru_cache(maxsize=1)
+def _ground_by_za() -> dict[tuple[int, int], str]:
+    return {(r[I_Z], r[I_A]): k for k, r in _nuclides().items() if not r[I_EXC]}
+
+
+def _semf_coefficients(p: dict[str, Any]) -> dict[str, float]:
+    c = dict(_SEMF_PAGE)
+    raw = p.get("semf")
+    if raw is None:
+        return c
+    if not isinstance(raw, dict) or not raw or any(k not in c for k in raw):
+        raise ToolError(
+            "INVALID_ARGUMENT",
+            f"params.semf: an object with some of {', '.join(c)} (MeV; k_P is the exponent of A in the "
+            "pairing term); the others keep the page values.",
+            '{"semf": {"a_P": 34, "k_P": -0.75}}',
+        )
+    for k, v in raw.items():
+        if isinstance(v, bool) or not isinstance(v, int | float) or not math.isfinite(v):
+            raise ToolError("INVALID_ARGUMENT", f"params.semf.{k} must be a finite number.")
+        c[k] = float(v)
+    return c
+
+
+def _liquid_drop(z: int, n: int, p: dict[str, Any], ctx: Ctx) -> tuple[dict[str, Any], str]:
+    """D115: radius r0 A^(1/3) and the semi-empirical binding energy, term by term."""
+    a = z + n
+    r0 = qty(p, "r0", "length", default=_R0)
+    assert r0 is not None
+    c = _semf_coefficients(p)
+    if z % 2 == 0 and n % 2 == 0:
+        delta = 1
+    elif z % 2 == 1 and n % 2 == 1:
+        delta = -1
+    else:
+        delta = 0
+    terms = {
+        "semf_volume_MeV": c["a_V"] * a,
+        "semf_surface_MeV": -c["a_S"] * a ** (2 / 3),
+        "semf_coulomb_MeV": -c["a_C"] * z * (z - 1) / a ** (1 / 3),
+        "semf_asymmetry_MeV": -c["a_A"] * (n - z) ** 2 / a,
+        "semf_pairing_MeV": delta * c["a_P"] * a ** c["k_P"],
+    }
+    total = sum(terms.values())
+    if a < _SEMF_LIGHT:
+        ctx.warn(
+            f"A = {a} < {_SEMF_LIGHT}: the liquid-drop formula fits light nuclei poorly (it has no shell "
+            "structure); the AME2020 binding energy is the measured one."
+        )
+    coeffs = ", ".join(f"{k} = {v:g}" for k, v in c.items())
+    formula = (
+        "r = r0 A^(1/3); E_B = a_V A - a_S A^(2/3) - a_C Z (Z - 1) / A^(1/3) - a_A (N - Z)^2 / A "
+        f"+ delta a_P A^k_P (delta = +1 even-even, -1 odd-odd, 0 odd A), {coeffs} (MeV)"
+    )
+    out = {
+        "r0_fm": r0 * 1e15,
+        "radius_fm": r0 * 1e15 * a ** (1 / 3),
+        **terms,
+        "semf_binding_MeV": total,
+        "semf_binding_per_nucleon_MeV": total / a,
+    }
+    return out, formula
+
+
+@op("nuclide_data", ("nuclide", "Z", "N", "r0", "semf"))
 def _nuclide_data(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
-    key = nuclide_key(p.get("nuclide"))
+    if p.get("Z") is not None or p.get("N") is not None:
+        if p.get("nuclide") is not None:
+            one_of(p, ("nuclide", "Z"), "the nucleus (nuclide, or Z with N)")
+        zz, nn = integer(p, "Z", 1), integer(p, "N", 0)
+        found = _ground_by_za().get((zz, zz + nn))
+        if found is None:
+            model, formula = _liquid_drop(zz, nn, p, ctx)
+            ctx.warn(
+                f"Z = {zz}, N = {nn} is not in AME2020: only the liquid-drop radius and binding energy."
+            )
+            ctx.formula = formula
+            ctx.formatted = (
+                f"Z = {zz}, N = {nn}: radius {fmt_sig(model['radius_fm'], 5)} fm, liquid-drop B/A = "
+                f"{fmt_sig(model['semf_binding_per_nucleon_MeV'], 5)} MeV."
+            )
+            ctx.units = units_for(model, _MODEL_UNITS)
+            return {"Z": zz, "N": nn, "A": zz + nn, **model}
+        key = found
+    else:
+        key = nuclide_key(p.get("nuclide"))
     r = _rec(key)
     z, a = r[I_Z], r[I_A]
     me, dme, est = mass_excess(key)
@@ -259,9 +367,15 @@ def _nuclide_data(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         ctx.warn("Mass estimated from systematics (# in the source), not measured.")
     if approx and t_half is not None and math.isfinite(t_half):
         ctx.warn(f"Approximate or limit half-life: {t_text}.")
+    model, model_formula = _liquid_drop(z, a - z, p, ctx)  # D115
+    out |= model
+    b_mev = float(b_kev) / 1e3
+    out["semf_minus_ame_MeV"] = model["semf_binding_MeV"] - b_mev
+    if b_mev != 0:
+        out["semf_error_percent"] = 100 * out["semf_minus_ame_MeV"] / b_mev
     ctx.formula = (
         "B = Z Delta(1H) + N Delta(n) - Delta(A, Z) (atomic mass excesses, AME2020); "
-        "M = A u + Delta; M_nucleus = M - Z m_e"
+        "M = A u + Delta; M_nucleus = M - Z m_e; " + model_formula
     )
     ctx.formatted = (
         f"{key}: Z = {z}, N = {a - z}, atomic mass {am:.9f} u, B/A = "
@@ -283,6 +397,7 @@ def _nuclide_data(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
             "decay_constant": "1/s",
             "mean_life_s": "s",
             "abundance_percent": "%",
+            **_MODEL_UNITS,
         },
     )
     return out

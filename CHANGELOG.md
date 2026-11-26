@@ -289,6 +289,16 @@ pages), one group at a time.
   MHz/T, numpy cross and dot products, E = -grad V of the tool's own potential, the exact field of two
   charges from `point_charges` at 13,379 times their distance, and the 2 x 2 inductance matrix.
   Mutation check: 49 changed lines out of 49 caught. Full suite 1,515 passed in 246.61 s.
+- Nuclear radius and semi-empirical mass formula (D115, spec 4.31.0): 2 of the 14 gaps of the measure of the
+  475 formulas. `eng_calc.nuclide_data` gives r = r0 A^(1/3) (r0 = 1.2 fm, changeable) and the liquid-drop
+  binding energy term by term (volume, surface, Coulomb, asymmetry, pairing) with its difference from
+  AME2020, and takes `Z` with `N` for nuclei outside the table. Coefficients: the column "Least-squares fit
+  (1)" of the page, the set of the list page, chosen by measure (3.855 MeV rms off AME2020 over the 2,455
+  measured ground states with A >= 20, the other columns 7.2-8.6 MeV); `semf` takes any other set.
+  Contract unchanged (208 operations). 14 tests in `tests/test_nuclear_radius_semf_d115.py`: the values of
+  the measure for Fe-56 (4.591 fm, 490.608 MeV), the page formula term by term for 7 nuclides, the pairing
+  signs, the rms over the whole table, Z = 120 with N = 184 outside the table.
+  Mutation check: 31 changed lines out of 31 caught. Full suite 1,528 passed and 1 failed in 374.16 s (the D111 plot test passes alone 3 of 3).
 - Linux tested (Ubuntu 22.04, x86_64, Python 3.12.13, uv 0.11.20): `--self-check` ok in 8.65 s; suite
   1,026 passed and 7 skipped in 44.91 s. macOS is not tested.
 
