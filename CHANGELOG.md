@@ -277,6 +277,18 @@ pages), one group at a time.
   page values (two solar-mass neutron stars at 1.89e8 m: period 1,002 s and 1.291e13 s to merger, page
   1,000 s and 1.30e13 s; 917 orbits per second at 20 km, page 918; Earth-Sun 196 W, page 200 W).
   Mutation check: 37 changed lines out of 37 caught. Full suite 1,492 passed in 247.27 s.
+- Larmor precession, electric dipole, inductors and conductances (D114, spec 4.30.0): 3 of the 14 gaps of
+  the measure of the 475 formulas (Larmor precession, torque of an electric dipole, inductors in series)
+  and the near case of conductances in series. New modes `magnetic_dipole.larmor` (omega = |gamma B| and f,
+  with gamma given or from CODATA 2022 for the electron, proton, neutron, shielded proton and shielded
+  helion), `electrostatics.dipole` (p = q d, torque p x E and energy -p . E in a uniform field, field and
+  potential of the ideal dipole at a point, warning near two charges) and `circuit_ac_dc.inductors`
+  (series, parallel, 2 coupled coils with a signed mutual inductance M); `circuit_ac_dc.resistors` takes
+  `conductances` and gives `G_eq`. Contract unchanged (208 operations).
+  23 tests in `tests/test_larmor_dipole_inductors_d114.py` against the CODATA values of gamma / (2 pi) in
+  MHz/T, numpy cross and dot products, E = -grad V of the tool's own potential, the exact field of two
+  charges from `point_charges` at 13,379 times their distance, and the 2 x 2 inductance matrix.
+  Mutation check: 49 changed lines out of 49 caught. Full suite 1,515 passed in 246.61 s.
 - Linux tested (Ubuntu 22.04, x86_64, Python 3.12.13, uv 0.11.20): `--self-check` ok in 8.65 s; suite
   1,026 passed and 7 skipped in 44.91 s. macOS is not tested.
 

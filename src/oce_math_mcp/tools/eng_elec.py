@@ -42,7 +42,8 @@ def _phi(p: dict[str, Any]) -> tuple[float, float]:
 
 _CIRC_MODES = {
     "ohm": {"V", "I", "R", "P"},
-    "resistors": {"values", "connection"},
+    "resistors": {"values", "conductances", "connection"},
+    "inductors": {"values", "connection", "M"},
     "divider": {"Vin", "R1", "R2"},
     "ac_single": {"V", "I", "P", "cos_phi", "phi_deg"},
     "ac_three": {"V", "I", "P", "cos_phi", "phi_deg"},
@@ -78,22 +79,76 @@ def _ohm(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     return {"V": V, "I": cur, "R": V / cur, "P": V * cur}
 
 
-def _resistors(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
-    vals = p.get("values")
+def _positive_list(p: dict[str, Any], key: str, what: str, example: str) -> list[float]:
+    vals = p.get(key)
     if (
         not isinstance(vals, list)
         or not vals
-        or not all(isinstance(v, int | float) and not isinstance(v, bool) and v > 0 for v in vals)
+        or not all(
+            isinstance(v, int | float) and not isinstance(v, bool) and math.isfinite(v) and v > 0
+            for v in vals
+        )
     ):
+        raise ToolError("INVALID_ARGUMENT", f"params.{key}: list of {what}, all > 0.", example)
+    return [float(v) for v in vals]
+
+
+def _resistors(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
+    conductances = p.get("conductances") is not None
+    if conductances and p.get("values") is not None:
+        one_of(p, ("values", "conductances"), "the elements (resistances or conductances)")
+    conn = choice(p, "connection", ("series", "parallel"))
+    if conductances:  # D114
+        vals = _positive_list(
+            p, "conductances", "conductances in S", '{"conductances": [0.1, 0.2]}'
+        )
+        G = 1 / sum(1 / v for v in vals) if conn == "series" else sum(vals)
+        ctx.formula = "series: 1/G = sum(1/G_i); parallel: G = sum(G_i); R = 1/G"
+        return {"R_eq": 1 / G, "G_eq": G}
+    vals = _positive_list(p, "values", "resistances in ohm", '{"values": [100, 220]}')
+    R = sum(vals) if conn == "series" else 1 / sum(1 / v for v in vals)
+    ctx.formula = "series: R = sum(R_i); parallel: 1/R = sum(1/R_i); G = 1/R"
+    return {"R_eq": R, "G_eq": 1 / R}
+
+
+def _inductors(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
+    """D114: uncoupled coils, or 2 coils with mutual inductance M (signed: < 0 for opposing windings)."""
+    vals = _positive_list(p, "values", "inductances in H", '{"values": [0.01, 0.02]}')
+    conn = choice(p, "connection", ("series", "parallel"))
+    if p.get("M") is None:
+        L = sum(vals) if conn == "series" else 1 / sum(1 / v for v in vals)
+        ctx.formula = "uncoupled coils: series L = sum(L_i); parallel 1/L = sum(1/L_i)"
+        return {"L_eq": L}
+    if len(vals) != 2:
         raise ToolError(
             "INVALID_ARGUMENT",
-            "params.values: list of resistances in ohm, all > 0.",
-            '{"values": [100, 220]}',
+            "params.M is the mutual inductance of 2 coupled coils: params.values must have 2 values.",
         )
-    conn = choice(p, "connection", ("series", "parallel"))
-    R = sum(vals) if conn == "series" else 1 / sum(1 / v for v in vals)
-    ctx.formula = "series: R = sum(R_i); parallel: 1/R = sum(1/R_i)"
-    return {"R_eq": float(R)}
+    l1, l2 = vals
+    m = need(p, "M", "inductance", positive=False)
+    top = math.sqrt(l1 * l2)
+    if abs(m) > top:
+        raise ToolError(
+            "INVALID_ARGUMENT",
+            f"|params.M| must be <= sqrt(L1 L2) = {fmt_float(top, 6)} H (coupling coefficient |k| <= 1).",
+        )
+    k = m / top
+    if conn == "series":
+        L = l1 + l2 + 2 * m
+    else:
+        den = l1 + l2 - 2 * m
+        if den == 0:
+            raise ToolError(
+                "INVALID_ARGUMENT",
+                "L1 = L2 = M (k = 1) in parallel: (L1 L2 - M^2) / (L1 + L2 - 2 M) is 0/0, the equivalent "
+                "inductance is undefined.",
+            )
+        L = l1 * l2 * (1 - k) * (1 + k) / den
+    ctx.formula = (
+        "2 coupled coils, M = k sqrt(L1 L2) (M < 0 for opposing windings): series L = L1 + L2 + 2 M; "
+        "parallel L = (L1 L2 - M^2) / (L1 + L2 - 2 M)"
+    )
+    return {"L_eq": L, "k_coupling": k}
 
 
 def _divider(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
@@ -171,9 +226,13 @@ def _circuit(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     if mode in {"ac_single", "ac_three"}:
         out = _ac(p, ctx, mode == "ac_three")
     else:
-        out = {"ohm": _ohm, "resistors": _resistors, "divider": _divider, "cable_drop": _cable}[
-            mode
-        ](p, ctx)
+        out = {
+            "ohm": _ohm,
+            "resistors": _resistors,
+            "inductors": _inductors,
+            "divider": _divider,
+            "cable_drop": _cable,
+        }[mode](p, ctx)
     ctx.units = units_for(
         out,
         {
@@ -182,6 +241,9 @@ def _circuit(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
             "R": "ohm",
             "P": "W",
             "R_eq": "ohm",
+            "G_eq": "S",
+            "L_eq": "H",
+            "k_coupling": "1",
             "Vout": "V",
             "S": "VA",
             "Q": "var",

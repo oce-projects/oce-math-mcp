@@ -1,4 +1,4 @@
-"""eng_calc: magnetic dipoles and magnetic circuits (D107).
+"""eng_calc: magnetic dipoles and magnetic circuits (D107), Larmor precession (D114).
 
 Source: Wikipedia "List of electromagnetism equations", sections "Magnetic circuits" and "Magnetic fields and
 moments", in the local offline library. SI units, vacuum (mu0) around the dipole.
@@ -11,6 +11,9 @@ moments", in the local offline library. SI units, vacuum (mu0) around the dipole
   math_solve.multi_integrate of the components of (1/2) r x J.
 - Torque tau = int dm x B and energy U = - int dm . B: m x B and - m . B for a dipole in a uniform field (or a
   point dipole); the sum over pieces dm_i in their fields B_i for a distribution.
+- Larmor precession (D114; page "Larmor precession"): the moment precesses about B at omega = |gamma B|, whatever the
+  angle between them; f = omega / (2 pi). gamma is given, or taken from CODATA 2022 for a particle (magnitudes;
+  the electron, neutron and helion moments point against their spin, so they precess in the other sense).
 """
 
 from __future__ import annotations
@@ -27,6 +30,14 @@ _DIP_MODES: dict[str, set[str]] = {
     "field": {"m", "x", "x0"},
     "moment": {"I", "N", "A", "normal", "vertices"},
     "torque": {"m", "B"},
+    "larmor": {"B", "gamma", "particle"},
+}
+_GAMMA = {  # CODATA 2022 names of the gyromagnetic ratios (magnitudes, rad/(s T))
+    "electron": "electron gyromag. ratio",
+    "proton": "proton gyromag. ratio",
+    "neutron": "neutron gyromag. ratio",
+    "shielded_proton": "shielded proton gyromag. ratio",
+    "shielded_helion": "shielded helion gyromag. ratio",
 }
 _CIRCUIT_KEYS = ("N", "I", "F", "Phi", "R", "segments")
 _MAX_POINTS = 10000
@@ -52,6 +63,10 @@ _UNITS = {
     "B_segments": "T",
     "H_segments": "A/m",
     "drop_segments": "A",
+    "gamma": "rad/(s*T)",
+    "gamma_over_2pi": "Hz/T",
+    "omega": "rad/s",
+    "f": "Hz",
 }
 
 
@@ -99,7 +114,7 @@ def _norm(a: list[float]) -> float:
 def _magnetic_dipole(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     mode = choice(p, "mode", tuple(_DIP_MODES))
     only(p, mode, _DIP_MODES[mode])
-    out = {"field": _field, "moment": _moment, "torque": _torque}[mode](p, ctx)
+    out = {"field": _field, "moment": _moment, "torque": _torque, "larmor": _larmor}[mode](p, ctx)
     ctx.units = units_for(out, _UNITS)
     return out
 
@@ -184,6 +199,39 @@ def _torque(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         ctx.formula = "tau = int dm x B = sum dm_i x B_i, U = -int dm . B = -sum dm_i . B_i"
     ctx.formatted = f"|tau| = {fmt_sig(size)} N m, U = {fmt_sig(u)} J"
     return out
+
+
+def _larmor(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
+    raw = p.get("B")
+    if (
+        isinstance(raw, list)
+        and len(raw) == 3
+        and all(isinstance(v, int | float) and not isinstance(v, bool) for v in raw)
+    ):
+        b = _norm(_vec3(p, "B"))  # a field vector: its magnitude
+    else:
+        b = abs(need(p, "B", "magnetic_flux_density", positive=False))
+    if one_of(p, ("gamma", "particle"), "the gyromagnetic ratio") == "gamma":
+        gamma = need(p, "gamma", None, positive=False)
+        source = "gamma given"
+    else:
+        name = _GAMMA[choice(p, "particle", tuple(_GAMMA))]
+        gamma = lookup(name)[1]
+        source = f"gamma = CODATA 2022 {name}"
+    omega = abs(gamma * b)
+    ctx.formula = (
+        f"omega = |gamma B| (Larmor frequency, the same at any angle between the moment and B), "
+        f"f = omega / (2 pi); {source}"
+    )
+    ctx.formatted = (
+        f"Larmor frequency f = {fmt_sig(omega / (2 * math.pi), 6)} Hz at |B| = {fmt_sig(b)} T"
+    )
+    return {
+        "gamma": gamma,
+        "gamma_over_2pi": gamma / (2 * math.pi),
+        "omega": omega,
+        "f": omega / (2 * math.pi),
+    }
 
 
 def _segments(p: dict[str, Any]) -> list[tuple[float, float, float]]:

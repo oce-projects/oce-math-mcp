@@ -5,7 +5,10 @@ Sources (Wikipedia pages):
   superposition for several charges;
 - «Capacitance», table «Capacitance of simple systems»: parallel-plate capacitor eps A / d, concentric
   cylinders 2 pi eps l / ln(R2 / R1), eccentric cylinders, two parallel wires, wire parallel to a
-  wall, concentric spheres, isolated sphere 4 pi eps a, disc 8 eps a; energy Q V / 2 = C V^2 / 2.
+  wall, concentric spheres, isolated sphere 4 pi eps a, disc 8 eps a; energy Q V / 2 = C V^2 / 2;
+- «Electric dipole moment» (D114): p = q d (d from -q to +q); in a uniform field U = -p . E and tau = p x E;
+  ideal dipole at the centre c, R = x - c: potential V = k_e p . R / R^3 and field
+  E = k_e (3 (p . R^) R^ - p) / R^3, the limit of two charges +-q at distances much larger than d.
 CODATA 2022 constants from scipy (eps0 = 8.8541878188e-12 F/m). Homogeneous medium with eps = eps_r eps0.
 """
 
@@ -18,7 +21,19 @@ import scipy.constants as _sc
 
 from ..envelope import Ctx
 from ..errors import ToolError
-from .eng_base import acosh1p, choice, fmt_sig, log_ratio, need, only, op, qty, units_for
+from .eng_base import (
+    acosh1p,
+    choice,
+    fmt_sig,
+    log_ratio,
+    need,
+    one_of,
+    only,
+    op,
+    qty,
+    range_guard,
+    units_for,
+)
 
 EPS0 = float(_sc.epsilon_0)
 K_E = 1 / (4 * math.pi * EPS0)
@@ -38,7 +53,10 @@ _MODES: dict[str, set[str]] = {
     "point_charges": {"charges", "point", "q", "eps_r"},
     "capacitor": {"geometry", "eps_r", "V", "Q"} | set().union(*_CAP_GEOMETRIES.values()),
     "combination": {"values", "connection"},
+    "dipole": {"p", "q", "d", "E", "point", "center", "eps_r"},
 }
+# |d| / |R| above which the field of the two charges is not that of the ideal dipole
+_DIPOLE_NEAR = 0.1
 _UNITS = {
     "k_e": "N*m2/C2",
     "F": "N",
@@ -53,6 +71,16 @@ _UNITS = {
     "C": "F",
     "Q": "C",
     "C_eq": "F",
+    "p": "C*m",
+    "p_magnitude": "C*m",
+    "tau": "N*m",
+    "tau_magnitude": "N*m",
+    "angle_deg": "deg",
+    "R_vector": "m",
+    "R_magnitude": "m",
+    "E_dipole": "V/m",
+    "E_dipole_mag": "V/m",
+    "V_dipole": "V",
 }
 
 
@@ -69,9 +97,12 @@ def _electrostatics(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         out = _capacitor(geo, p, ctx)
     else:
         only(p, mode, _MODES[mode])
-        out = {"coulomb": _coulomb, "point_charges": _point_charges, "combination": _combination}[
-            mode
-        ](p, ctx)
+        out = {
+            "coulomb": _coulomb,
+            "point_charges": _point_charges,
+            "combination": _combination,
+            "dipole": _dipole,
+        }[mode](p, ctx)
     ctx.units = units_for(out, _UNITS)
     return out
 
@@ -152,6 +183,84 @@ def _point_charges(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         "U = sum_(i<j) k_e q_i q_j / r_ij; F = q E"
     )
     ctx.formatted = f"|E| = {fmt_sig(out['E_mag'], 6)} V/m, V = {fmt_sig(v, 6)} V."
+    return out
+
+
+def _dot(a: list[float], b: list[float]) -> float:
+    return sum(x * y for x, y in zip(a, b, strict=True))
+
+
+@range_guard
+def _dipole(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
+    sep: list[float] | None = None
+    if one_of(p, ("p", "q"), "the dipole moment (p, or q with d)") == "p":
+        if p.get("d") is not None:
+            raise ToolError(
+                "INVALID_ARGUMENT",
+                "params.d goes with params.q (p = q d): with params.p leave it out.",
+            )
+        pv = _vec(p.get("p"), "p", (3,))
+    else:
+        q = need(p, "q", "charge", positive=False)
+        sep = _vec(p.get("d"), "d", (3,))
+        pv = [q * x for x in sep]
+    if p.get("point") is None:
+        for key in ("center", "eps_r"):
+            if p.get(key) is not None:
+                raise ToolError(
+                    "INVALID_ARGUMENT",
+                    f"params.{key} goes with params.point (the field of the dipole at a point).",
+                )
+    size_p = math.sqrt(_dot(pv, pv))
+    out: dict[str, Any] = {"p": pv, "p_magnitude": size_p}
+    parts = ["p = q d"]
+    if p.get("E") is not None:
+        ev = _vec(p.get("E"), "E", (3,))
+        tau = [
+            pv[1] * ev[2] - pv[2] * ev[1],
+            pv[2] * ev[0] - pv[0] * ev[2],
+            pv[0] * ev[1] - pv[1] * ev[0],
+        ]
+        size_tau = math.sqrt(_dot(tau, tau))
+        u = -_dot(pv, ev)
+        out |= {"tau": tau, "tau_magnitude": size_tau, "U": u}
+        if size_p > 0 and _dot(ev, ev) > 0:
+            out["angle_deg"] = math.degrees(math.atan2(size_tau, -u))
+        parts.append("uniform field: U = -p . E, tau = p x E")
+    if p.get("point") is not None:
+        x = _vec(p.get("point"), "point", (3,))
+        c = _vec(p.get("center"), "center", (3,)) if p.get("center") is not None else [0.0] * 3
+        r = [a - b for a, b in zip(x, c, strict=True)]
+        size = math.sqrt(_dot(r, r))
+        if size == 0:
+            raise ToolError(
+                "INVALID_ARGUMENT",
+                "params.point is the position of the dipole (params.center): the field of a point dipole "
+                "is infinite there.",
+            )
+        k = K_E / _eps_r(p)
+        pr = _dot(pv, r)
+        e = [k * (3 * pr * ri / size**5 - pc / size**3) for ri, pc in zip(r, pv, strict=True)]
+        out |= {
+            "R_vector": r,
+            "R_magnitude": size,
+            "E_dipole": e,
+            "E_dipole_mag": math.sqrt(_dot(e, e)),
+            "V_dipole": k * pr / size**3,
+        }
+        parts.append(
+            "ideal dipole, R = point - center: V = k_e p . R / R^3, E = k_e (3 (p . R^) R^ - p) / R^3"
+        )
+        if sep is not None and math.sqrt(_dot(sep, sep)) > _DIPOLE_NEAR * size:
+            ctx.warn(
+                f"|d| = {fmt_sig(math.sqrt(_dot(sep, sep)))} m is more than {_DIPOLE_NEAR:g} |R|: the field of "
+                "the two charges differs from the ideal dipole by terms of order (d / R)^2; mode "
+                "point_charges gives it exactly."
+            )
+    ctx.formula = "; ".join(parts) + "; k_e = 1 / (4 pi eps0 eps_r)"
+    ctx.formatted = f"|p| = {fmt_sig(size_p, 6)} C m" + (
+        f", |E| = {fmt_sig(out['E_dipole_mag'], 6)} V/m" if "E_dipole" in out else ""
+    )
     return out
 
 
