@@ -18,6 +18,8 @@ LEAN_READY = lean_check.lean_available()
 
 @pytest.mark.skipif(not LEAN_READY, reason="Lean + Mathlib not installed")
 def test_timeout_message_explains_the_cold_start(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The message of lake env lean; the one of the Lean REPL is tested in test_lean_repl_d103.py.
+    monkeypatch.setenv("OCE_MATH_LEAN_REPL", "0")
     monkeypatch.setattr(limits, "LEAN_TIMEOUT_S", 0.05)
     err = call("lean_check", code="theorem t : (1 : ℕ) = 1 := rfl")["error"]
     assert err["code"] == "TIMEOUT", err

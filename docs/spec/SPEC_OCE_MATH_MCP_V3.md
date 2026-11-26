@@ -1,6 +1,6 @@
 # `oce-math-mcp` V3 specification: final tool catalogue
 
-Spec version: **4.18.0** of 2026-11-26 (3.1.0: 3D drawing operations in `geom3d_calc` and the
+Spec version: **4.19.0** of 2026-11-26 (3.1.0: 3D drawing operations in `geom3d_calc` and the
 `show_steps` field, decisions D22 and D23; 3.2.0: `date_calc` with recurring events, time zones, real
 hours between two instants, age in months and weeks, decision D24; 3.3.0: tool status in server
 0.1.0, `lean_check` with code filter and axiom check, decision D36; 3.4.0:
@@ -30,7 +30,7 @@ decision D47;
 3.26.0: catenary cables and journal bearings, decision D58;
 3.27.0: 2D and 3D trusses, decision D59;
 3.28.0: torsion of non-circular sections, decision D60;
-4.0.0: everything in English, decision D61 (breaking: `formatted_it` -> `formatted`, step `text_it` -> `text`, English separators and ISO dates in texts, `vat`/`vat_add`/`vat_remove`/`withholding` in `math_eval`, no `weekday_it` in `date_calc`, English text values in `eng_calc`, no Italian particle aliases); 4.1.0: geometric and wave optics, decision D64; 4.2.0: practical electronics, decision D65; 4.3.0: friction in simple machines, decision D66; 4.4.0: electric machines, decision D67; 4.5.0: thin plates, decision D68; 4.6.0: continuous beams, decision D69; 4.7.0: local losses, decision D70; 4.8.0: stress concentration at holes, decision D71; 4.9.0: rotor balancing, decision D72; 4.10.0: rolling without slipping, decision D73; 4.10.1: finite results in eng_calc, decision D74; 4.11.0: kinetic theory of gases, decision D87; 4.12.0: Newtonian gravitation, decision D88; 4.12.1: `gravitation.rotating_body` towards the equator in both hemispheres, decision D89; 4.13.0: corrections of the audit of the repository, decisions D90-D97; 4.14.0: statistical mechanics and thermodynamic relations, decision D98; 4.15.0: quantum angular momentum and wavefunctions, decision D99; 4.16.0: general wave functions and modulation, decision D100; 4.17.0: `check_solution` puts the solution in before the derivatives, decision D101; 4.18.0: Lagrangian mechanics, central forces and reference frames, decision D102). Server: `oce-math-mcp` (package `oce_math_mcp`).
+4.0.0: everything in English, decision D61 (breaking: `formatted_it` -> `formatted`, step `text_it` -> `text`, English separators and ISO dates in texts, `vat`/`vat_add`/`vat_remove`/`withholding` in `math_eval`, no `weekday_it` in `date_calc`, English text values in `eng_calc`, no Italian particle aliases); 4.1.0: geometric and wave optics, decision D64; 4.2.0: practical electronics, decision D65; 4.3.0: friction in simple machines, decision D66; 4.4.0: electric machines, decision D67; 4.5.0: thin plates, decision D68; 4.6.0: continuous beams, decision D69; 4.7.0: local losses, decision D70; 4.8.0: stress concentration at holes, decision D71; 4.9.0: rotor balancing, decision D72; 4.10.0: rolling without slipping, decision D73; 4.10.1: finite results in eng_calc, decision D74; 4.11.0: kinetic theory of gases, decision D87; 4.12.0: Newtonian gravitation, decision D88; 4.12.1: `gravitation.rotating_body` towards the equator in both hemispheres, decision D89; 4.13.0: corrections of the audit of the repository, decisions D90-D97; 4.14.0: statistical mechanics and thermodynamic relations, decision D98; 4.15.0: quantum angular momentum and wavefunctions, decision D99; 4.16.0: general wave functions and modulation, decision D100; 4.17.0: `check_solution` puts the solution in before the derivatives, decision D101; 4.18.0: Lagrangian mechanics, central forces and reference frames, decision D102; 4.19.0: `lean_check` through a persistent Lean REPL with Mathlib loaded once, decision D103). Server: `oce-math-mcp` (package `oce_math_mcp`).
 
 **This spec replaces V2** (`SPEC_OCE_MATH_MCP_E_PIANO_V2.md`) for the tool catalogue and for the
 JSON schemas. The decisions behind it are D13-D21 in `docs/DECISIONS.md`.
@@ -141,7 +141,7 @@ the contract "to the byte"; the keys of `result` are stable from server version 
 | `math_numeric.digits` | <= 1,000 |
 | `python_sandbox.code` | <= 8,000 characters; output <= 10,000 characters, beyond that it is truncated with a warning |
 | `lean_check.code` | <= 20,000 characters |
-| Time per call | 5.0 s; `lean_check` 60 s |
+| Time per call | 5.0 s; `lean_check` 60 s (and 300 s once to load Mathlib into the Lean REPL, D103) |
 | Memory of the calculation process | 2 GiB (Windows: Job Object; Linux: `RLIMIT_AS`) |
 
 ### 2.4 Security (D5, D13)
@@ -484,6 +484,21 @@ if the check did not run (for example a comment left open at the end).
 
 The filter works on the whole text, comments included. At timeout the server kills the whole tree of
 Lean processes.
+
+**Lean REPL (D103).** Code without its own `import` is checked in a persistent
+[Lean REPL](https://github.com/leanprover-community/repl) (tag of the pinned Lean version, built by
+`--install-lean` next to the elan folder, or in `OCE_MATH_LEAN_REPL_DIR`). The REPL loads Mathlib
+once (`import Mathlib` gives environment 0) and every check is a command on environment 0, so a
+declaration of one check is not visible in the next one. The axiom trailer and the result fields are
+the same as with `lake env lean`; error lines are those of the code sent (no `import` line added).
+Limits: 300 s to load Mathlib (`TIMEOUT` naming Mathlib), 60 s per check (`TIMEOUT`; the REPL is
+killed and starts again at the next check), restart every 1,000 checks (every environment stays in
+memory, about +0.24 MB per check) and after a crash. One check at a time: concurrent calls wait for
+the REPL. The `lake env lean` path is used for code with `import` lines, when the REPL is missing,
+when `OCE_MATH_LEAN_REPL=0`, and (with a warning) when the REPL cannot start or refuses a command.
+`OCE_MATH_LEAN_REPL=warm` loads Mathlib when the server starts; otherwise at the first check.
+Measured on 2026-11-26: first check 16.49 s, the next 40 checks 0.039-0.076 s (median 0.049 s),
+`lake env lean` 15.46 s for every check; memory of the REPL 3,147 MB in use after the first check.
 
 ---
 

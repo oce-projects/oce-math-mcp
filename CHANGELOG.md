@@ -145,6 +145,23 @@ pages), one group at a time.
   cancel and factor_terms above (simplify of the double pendulum Hamiltonian took 2.44 s and the call 12.08
   s, over the 5 s limit). Measuring also showed that the numerical check of the action called the compiled
   function the wrong way and always said not verified; the test now checks `verified`.
+- `lean_check` through a persistent Lean REPL (D103, spec 4.19.0, `tools/lean_repl.py`): the Lean tests
+  timed out now and then (3, 2 and 0 checks out of 3 in three runs) because `lake env lean` loads Mathlib at
+  every check (15.46 s even for `#check Nat`). The server keeps one
+  [Lean REPL](https://github.com/leanprover-community/repl) with Mathlib loaded once and checks every proof
+  from that environment: first check 16.49 s, the next 40 checks 0.039 to 0.076 s (median 0.049 s). The
+  answers are the same as with `lake env lean` (5 cases compared, error lines included) and a definition of
+  one check is not visible in the next. The REPL restarts every 1,000 checks (+0.24 MB per check measured),
+  after a check over 60 s and after a crash; loading Mathlib has its own 300 s limit. Code with `import`
+  lines, a missing or broken REPL (with a warning) and `OCE_MATH_LEAN_REPL=0` use `lake env lean` as
+  before; `OCE_MATH_LEAN_REPL=warm` loads Mathlib when the server starts. `--install-lean` clones the REPL
+  at the tag of the pinned Lean version and builds it (27 s, 11 MB), and refuses a clone for another
+  version. A server killed with `taskkill /F` leaves 0 `repl` processes after 3 s (Job Object). 26 tests
+  in `tests/test_lean_repl_d103.py`: 24 with a fake REPL in Python (`tests/fake_lean_repl.py`, same JSON
+  protocol: restart after timeout, crash, refusal and recycling, start limit, 16 concurrent checks, fallback,
+  warm-up and shutdown in the server, install) and 2 with Lean. The older `lean_check` tests now take less
+  than 0.23 s each. Mutation check: 23 changed lines out of 24 caught; the one left (`ensure_ascii=True`,
+  surrogate pairs for 𝔸) gives the same answers, because the REPL reads both forms.
 - Linux tested (Ubuntu 22.04, x86_64, Python 3.12.13, uv 0.11.20): `--self-check` ok in 8.65 s; suite
   1,026 passed and 7 skipped in 44.91 s. macOS is not tested.
 

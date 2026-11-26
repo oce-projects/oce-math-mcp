@@ -1,4 +1,8 @@
-"""lean_check: verification of Lean 4 + Mathlib proofs (D16 timeout 60 s, D17 Lean in the repo)."""
+"""lean_check: verification of Lean 4 + Mathlib proofs (D16 timeout 60 s, D17 Lean in the repo).
+
+D103: code without its own `import` goes to a persistent Lean REPL (lean_repl.py), where Mathlib is loaded once;
+code with `import` lines, or a REPL that is off or broken, goes to `lake env lean` on a file as before.
+"""
 
 from __future__ import annotations
 
@@ -9,12 +13,14 @@ import subprocess
 import sys
 import time
 import uuid
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from .. import limits
 from ..envelope import Ctx
 from ..errors import ToolError
+from . import lean_repl
 
 REPO = Path(__file__).resolve().parents[3]
 _MSG = re.compile(
@@ -200,6 +206,23 @@ def lake_exe() -> Path:
     return elan_home() / "bin" / name
 
 
+def repl_dir() -> Path:
+    """Clone of leanprover-community/repl (D103): next to elan unless OCE_MATH_LEAN_REPL_DIR says otherwise."""
+    return Path(os.environ.get("OCE_MATH_LEAN_REPL_DIR", str(elan_home().parent / "repl")))
+
+
+def repl_exe() -> Path:
+    name = "repl.exe" if os.name == "nt" else "repl"
+    return repl_dir() / ".lake" / "build" / "bin" / name
+
+
+def lean_run_env() -> dict[str, str]:
+    env = dict(os.environ)
+    env["ELAN_HOME"] = str(elan_home())
+    env["PATH"] = str(elan_home() / "bin") + os.pathsep + env.get("PATH", "")
+    return env
+
+
 def mathlib_olean() -> Path:
     """Compiled Mathlib file: it exists only after a successful `lake exe cache get`."""
     return (
@@ -305,6 +328,100 @@ def _kill_tree(proc: subprocess.Popen[str], job: Any) -> None:
     proc.kill()
 
 
+@dataclass
+class _Run:
+    """What one run of Lean said, in the same shape for the REPL and for `lake env lean`."""
+
+    returncode: int = 0
+    errors: list[dict[str, Any]] = field(default_factory=list)
+    warnings: list[dict[str, Any]] = field(default_factory=list)
+    messages: list[str] = field(default_factory=list)
+    axioms: list[str] | None = None
+    sorry: bool = False
+
+    def add(self, kind: str, line: int, col: int, text: str) -> None:
+        item = {"line": line, "col": col, "text": text}
+        (self.errors if kind == "error" else self.warnings).append(item)
+        self.messages.append(f"{kind}: {text}")
+
+
+def _axioms(text: str, marker: str) -> list[str]:
+    listed = text.split(marker, 1)[1].strip().strip("[]")
+    return sorted({a.strip() for a in listed.split(",") if a.strip()})
+
+
+def _check_with_file(code: str, has_import: bool, marker: str) -> _Run:
+    """`lake env lean` on a temporary file: Mathlib is loaded again at every check (15.46 s measured)."""
+    proj = project_dir()
+    tmp_dir = proj / ".oce_tmp"
+    tmp_dir.mkdir(exist_ok=True)
+    src = tmp_dir / f"Check_{uuid.uuid4().hex}.lean"
+    src.write_text(code + _axiom_trailer(marker), encoding="utf-8")
+    try:
+        returncode, stdout, stderr = _run_tree(
+            [str(lake_exe()), "env", "lean", str(src)], proj, lean_run_env(), limits.LEAN_TIMEOUT_S
+        )
+    except subprocess.TimeoutExpired:
+        raise ToolError(
+            "TIMEOUT",
+            f"Lean beyond {limits.LEAN_TIMEOUT_S:.0f} s. The first check after a restart loads Mathlib "
+            "from disk and can take longer than that; the next ones take about 20 s. Run the same check "
+            "again; if it still times out, split the proof into smaller lemmas.",
+        ) from None
+    finally:
+        src.unlink(missing_ok=True)
+    run = _Run(returncode=returncode)
+    shift = 0 if has_import else 1  # the line "import Mathlib" added in front
+    for raw in (stdout + "\n" + stderr).splitlines():
+        if marker in raw:
+            run.axioms = _axioms(raw, marker)
+            continue
+        m = _MSG.match(raw.strip())
+        if not m:
+            if raw.strip():
+                run.messages.append(raw.strip())
+            continue
+        run.add(m["kind"], int(m["line"]) - shift, int(m["col"]), m["text"])
+    return run
+
+
+def _check_with_repl(code: str, marker: str, ctx: Ctx) -> _Run | None:
+    """The persistent REPL (D103). None: the REPL cannot be used and `lake env lean` must check the code."""
+    try:
+        resp, _seconds = lean_repl.shared().check(
+            code + _axiom_trailer(marker), limits.LEAN_TIMEOUT_S
+        )
+    except lean_repl.ReplStartTimeout:
+        raise ToolError(
+            "TIMEOUT",
+            f"Lean beyond {limits.LEAN_REPL_START_S:.0f} s while loading Mathlib into the Lean REPL (first "
+            "check after a start). Run the same check again: the Mathlib files are then in the disk cache.",
+        ) from None
+    except subprocess.TimeoutExpired:
+        raise ToolError(
+            "TIMEOUT",
+            f"Lean beyond {limits.LEAN_TIMEOUT_S:.0f} s for this check; Mathlib was already loaded, so the "
+            "time went into the proof. Split the proof into smaller lemmas or use lighter tactics, then run "
+            "it again.",
+        ) from None
+    except lean_repl.ReplError as err:
+        ctx.warn(
+            f"Lean REPL not usable ({err}); this check used lake env lean, which loads Mathlib again."
+        )
+        return None
+    run = _Run(sorry=bool(resp.get("sorries")))
+    for m in resp.get("messages", []):
+        text = str(m.get("data", ""))
+        if marker in text:
+            run.axioms = _axioms(text, marker)
+            continue
+        pos = m.get("pos") or {}
+        run.add(
+            str(m.get("severity", "info")), int(pos.get("line", 0)), int(pos.get("column", 0)), text
+        )
+    return run
+
+
 def handle(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     code: str = args["code"]
     if len(code) > limits.LEAN_CODE_MAX:
@@ -319,55 +436,26 @@ def handle(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
             "Lean 4 + Mathlib are not installed: oce-math-mcp --install-lean "
             "(folders from OCE_MATH_ELAN_HOME and OCE_MATH_LEAN_PROJECT, inside the repo by default).",
         )
-    if not re.search(r"^\s*import\s", code, flags=re.MULTILINE):
-        code = "import Mathlib\n" + code
-    proj = project_dir()
-    tmp_dir = proj / ".oce_tmp"
-    tmp_dir.mkdir(exist_ok=True)
-    src = tmp_dir / f"Check_{uuid.uuid4().hex}.lean"
+    has_import = bool(re.search(r"^\s*import\s", code, flags=re.MULTILINE))
     marker = f"OCE_AXIOMS_{uuid.uuid4().hex[:16]}"  # random: the user code does not know it
-    src.write_text(code + _axiom_trailer(marker), encoding="utf-8")
-    env = dict(os.environ)
-    env["ELAN_HOME"] = str(elan_home())
-    env["PATH"] = str(elan_home() / "bin") + os.pathsep + env.get("PATH", "")
     t0 = time.perf_counter()
-    try:
-        returncode, stdout, stderr = _run_tree(
-            [str(lake_exe()), "env", "lean", str(src)], proj, env, limits.LEAN_TIMEOUT_S
+    run = _check_with_repl(code, marker, ctx) if not has_import and lean_repl.enabled() else None
+    via = "Lean REPL, Mathlib already loaded" if run is not None else "lake env lean"
+    if run is None:
+        run = _check_with_file(
+            code if has_import else "import Mathlib\n" + code, has_import, marker
         )
-    except subprocess.TimeoutExpired:
-        raise ToolError(
-            "TIMEOUT",
-            f"Lean beyond {limits.LEAN_TIMEOUT_S:.0f} s. The first check after a restart loads Mathlib "
-            "from disk and can take longer than that; the next ones take about 20 s. Run the same check "
-            "again; if it still times out, split the proof into smaller lemmas.",
-        ) from None
-    finally:
-        src.unlink(missing_ok=True)
     elapsed = time.perf_counter() - t0
-    errors: list[dict[str, Any]] = []
-    warnings: list[dict[str, Any]] = []
-    messages = []
-    axioms: list[str] | None = None
-    for raw in (stdout + "\n" + stderr).splitlines():
-        if marker in raw:
-            listed = raw.split(marker, 1)[1].strip().strip("[]")
-            axioms = sorted({a.strip() for a in listed.split(",") if a.strip()})
-            continue
-        m = _MSG.match(raw.strip())
-        if not m:
-            if raw.strip():
-                messages.append(raw.strip())
-            continue
-        item = {
-            "line": int(m["line"]) - (0 if code is args["code"] else 1),
-            "col": int(m["col"]),
-            "text": m["text"],
-        }
-        (errors if m["kind"] == "error" else warnings).append(item)
-        messages.append(f"{m['kind']}: {m['text']}")
+    returncode, errors, warnings, messages, axioms = (
+        run.returncode,
+        run.errors,
+        run.warnings,
+        run.messages,
+        run.axioms,
+    )
     has_sorry = (
-        any("sorry" in w["text"] for w in warnings)
+        run.sorry
+        or any("sorry" in w["text"] for w in warnings)
         or bool(re.search(r"\bsorry\b", args["code"]))
         or "sorryAx" in (axioms or [])
     )
@@ -388,7 +476,7 @@ def handle(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         and (args.get("allow_sorry", False) or not has_sorry)
     )
     ctx.formatted = "Proof valid." if valid else "Proof NOT valid."
-    ctx.step("Code passed to Lean 4 with Mathlib (lake env lean).")
+    ctx.step(f"Code passed to Lean 4 with Mathlib ({via}).")
     ctx.step(
         f"Errors: {len(errors)}; warnings: {len(warnings)}; sorry: {'yes' if has_sorry else 'no'}."
     )

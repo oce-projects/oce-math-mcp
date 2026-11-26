@@ -164,15 +164,19 @@ def main(argv: list[str] | None = None) -> int:
 
     from .pool import ComputePool
     from .server import build_server
+    from .tools import lean_check, lean_repl
 
     pool = None if args.no_pool else ComputePool(size=args.pool_size)
     server = build_server(pool)
+    if lean_repl.warm_at_start() and lean_check.lean_available():
+        lean_repl.warm_up_in_background()  # D103, OCE_MATH_LEAN_REPL=warm
     try:
         if args.http:
             server.run("streamable-http", host=args.host, port=args.port)
         else:
             server.run("stdio")
     finally:
+        lean_repl.shutdown()
         if pool is not None:
             pool.close()
     return 0

@@ -16,4 +16,8 @@ SANDBOX_SEQ_MAX = 10_000_000
 LEAN_CODE_MAX = 20_000
 TIMEOUT_S = 5.0
 LEAN_TIMEOUT_S = 60.0
+# D103: loading Mathlib into the Lean REPL took 16.16 s (measured 2026-11-26); a cold disk can take much longer.
+LEAN_REPL_START_S = 300.0
+# D103: +0.24 MB per check (1,000 checks: 3,130 -> 3,374 MB in use); the REPL restarts after this many checks.
+LEAN_REPL_RECYCLE = 1000
 MEMORY_MB = 2_048

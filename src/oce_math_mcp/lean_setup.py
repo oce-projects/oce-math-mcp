@@ -27,6 +27,9 @@ from .tools import lean_check
 ELAN_VERSION = "v4.4.0"
 MATHLIB_REV = "v4.36.0"
 LEAN_TOOLCHAIN = "leanprover/lean4:v4.36.0"
+# D103: the Lean REPL (Apache-2.0) at the tag of the same Lean version: an .olean of another version does not load.
+REPL_URL = "https://github.com/leanprover-community/repl.git"
+REPL_TAG = LEAN_TOOLCHAIN.split(":", 1)[1]
 
 LAKEFILE = f"""name = "oce_lean"
 version = "0.1.0"
@@ -194,6 +197,29 @@ NETWORK_WARNING = (
 )
 
 
+def install_repl(log: Any) -> float:
+    """Clones the Lean REPL at REPL_TAG and builds it with lake (D103; measured 27 s on 2026-11-26)."""
+    if lean_check.repl_exe().is_file():
+        log(f"Lean REPL already built in {lean_check.repl_exe()}")
+        return 0.0
+    t0 = time.perf_counter()
+    target = lean_check.repl_dir()
+    if not target.is_dir():
+        target.parent.mkdir(parents=True, exist_ok=True)
+        git = shutil.which("git") or "git"
+        cmd = [git, "clone", "--depth", "1", "--branch", REPL_TAG, REPL_URL, str(target)]
+        _run(cmd, target.parent, 600, log)
+    toolchain = target / "lean-toolchain"
+    found = toolchain.read_text(encoding="utf-8").strip() if toolchain.is_file() else "none"
+    if found != LEAN_TOOLCHAIN:
+        raise RuntimeError(
+            f"the Lean REPL in {target} is for {found}, Mathlib needs {LEAN_TOOLCHAIN}: "
+            "remove that folder and run --install-lean again"
+        )
+    _run([str(lean_check.lake_exe()), "build", "repl"], target, 3600, log)
+    return time.perf_counter() - t0
+
+
 def install(log: Any = print) -> dict[str, Any]:
     t_all = time.perf_counter()
     report: dict[str, Any] = {
@@ -215,6 +241,8 @@ def install(log: Any = print) -> dict[str, Any]:
     lake = str(lean_check.lake_exe())
     report["lake_update_s"] = round(_run([lake, "update"], proj, 7200, log), 1)
     report["cache_get_s"] = round(_run([lake, "exe", "cache", "get"], proj, 7200, log), 1)
+    report["repl"] = REPL_TAG
+    report["repl_s"] = round(install_repl(log), 1)
     report["total_s"] = round(time.perf_counter() - t_all, 1)
     report["elan_size_mb"] = _size_mb(lean_check.elan_home())
     report["lake_size_mb"] = _size_mb(proj / ".lake")

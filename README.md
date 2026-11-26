@@ -213,7 +213,7 @@ bytes for `memory_mb = 1024`, and a 12.8 GB array is refused. Not tested: Lean o
 | `uv` is not found | open a new terminal after installing uv |
 | the client cannot start the server, but `--self-check` passes | desktop apps do not always see the terminal `PATH`: put the full path of `uv` in `command` (`where.exe uv` on Windows, `which uv` on macOS and Linux) |
 | the first call takes a few seconds | the server starts its computing processes: 3.603 s for one process, measured in `docs/BENCHMARK.md` |
-| `lean_check` answers `TIMEOUT` on the first proof after a restart | Lean loads Mathlib from disk the first time; run the same check again (see below) |
+| the first `lean_check` takes about 20 s | the Lean REPL loads Mathlib once (16.16 s measured); the next checks take less than 0.1 s. `OCE_MATH_LEAN_REPL=warm` loads it when the server starts (see below) |
 | `uv sync` is slow or fails on a network drive | use a local environment with `UV_PROJECT_ENVIRONMENT` (step 2) |
 
 ## Running
@@ -257,6 +257,8 @@ The HTTP transport has no authentication. Keep the default host `127.0.0.1`; do 
 | `OCE_MATH_POOL_SIZE` | number of computing processes |
 | `OCE_MATH_ELAN_HOME` | elan folder (default `.lean-tools/elan` in the repo) |
 | `OCE_MATH_LEAN_PROJECT` | Lean project with Mathlib (default `lean/` in the repo) |
+| `OCE_MATH_LEAN_REPL` | `0`: no Lean REPL, every check runs `lake env lean`; `warm`: load Mathlib into the REPL when the server starts; unset: at the first check (decision D103) |
+| `OCE_MATH_LEAN_REPL_DIR` | folder of the Lean REPL (default `repl` next to the elan folder) |
 | `OCE_MATH_DATASET_DIR` | optional mirror folder of the spec for `--sync-spec` |
 | `OCE_MATH_RAG_DOC` | optional knowledge-base copy of the spec for `--sync-spec` |
 
@@ -269,10 +271,12 @@ uv run oce-math-mcp --install-lean
 ```
 
 The command downloads elan, installs the toolchain pinned in `lean/lean-toolchain`, then downloads
-Mathlib and its precompiled files (`lake exe cache get`). Without Lean, `lean_check` answers with a
-clear error and the other tools keep working. After the installation `--self-check` reports
-`"lean": "installed"`. About 10 GB are needed: measured 3,287.2 MB for elan
-and 6,993.7 MB for Mathlib. Measured times: `docs/BENCHMARK.md`.
+Mathlib and its precompiled files (`lake exe cache get`). Last it clones the
+[Lean REPL](https://github.com/leanprover-community/repl) (Apache-2.0) at the tag of the same Lean
+version and builds it with `lake build repl` (27 s measured; `git` must be installed). Without Lean,
+`lean_check` answers with a clear error and the other tools keep working. After the installation
+`--self-check` reports `"lean": "installed"`. About 10 GB are needed: measured 3,287.2 MB for elan,
+6,993.7 MB for Mathlib and 11 MB for the REPL. Measured times: `docs/BENCHMARK.md`.
 
 If the repo is on a network drive, install Lean on a local drive (decision D37: on the network
 drive the installation failed 2 times out of 2). Give the same variables to the server:
@@ -281,9 +285,20 @@ drive the installation failed 2 times out of 2). Give the same variables to the 
 $env:OCE_MATH_ELAN_HOME = "$HOME\.oce-math-mcp\elan"; $env:OCE_MATH_LEAN_PROJECT = "$HOME\.oce-math-mcp\lean"; uv run oce-math-mcp --install-lean
 ```
 
-The first check after a restart is slower: Lean loads Mathlib from disk. Measured on 25/11/2026:
-two first checks after hours of inactivity went beyond the 60 s limit, the next ones took 16.9 to
-20.1 s. The limit stays (decision D16); the `TIMEOUT` answer says to run the same check again.
+The server keeps one Lean REPL running with Mathlib loaded (decision D103). Every check starts from
+the same Mathlib environment, so a definition made in one check is not visible in the next one.
+Measured on 26/11/2026:
+
+| Step | Time |
+|---|---|
+| `lake env lean` for every check (before D103) | 15.46 s for `#check Nat` |
+| loading Mathlib into the REPL, once | 16.16 s |
+| one check in the REPL | 0.004 to 0.034 s |
+
+The REPL uses memory while the server runs: 3,130 MB in use after loading Mathlib, 3,374 MB after
+1,000 checks. It is restarted every 1,000 checks, after a check that passes the 60 s limit
+(decision D16), and after a crash. Code with its own `import` lines, or a REPL that cannot start,
+is checked with `lake env lean` as before; `OCE_MATH_LEAN_REPL=0` always does that.
 
 `lean_check` rejects code that can run programs or add axioms (`#eval`, `elab`, `macro`,
 `run_cmd`, `axiom`, `native_decide` and others, decision D36). A proof is valid only if it uses
