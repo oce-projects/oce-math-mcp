@@ -349,6 +349,16 @@ pages), one group at a time.
   equation), the current with one mass per variable, two particles in 3D (E = 3 hbar w), a mass written as
   an expression, the same mass everywhere equal to the result without `masses`, errors.
   Mutation check: 13 changed lines out of 14 caught at the first round; after a stricter error test, 2 out of 2. Full suite 1,585 passed in 255.75 s.
+- `special_relativity.doppler` at an angle (D119, spec 4.35.0), point 3 of group B (5 formulas of the
+  measure of the 475 formulas). Optional `angle_deg` (0 to 180) with `angle_frame` = `receiver` or `source`:
+  f_r = f_s / (gamma (1 + beta cos theta_r)) or f_r = gamma (1 - beta cos theta_s) f_s, the other angle from
+  the relativistic aberration (page "Relativistic Doppler effect"); new outputs `gamma`,
+  `angle_receiver_deg`, `angle_source_deg`. Angle 0 is the old case (beta > 0 moving away). 15 tests in
+  `tests/test_doppler_angle_d119.py`: the values of the measure (nu' = gamma nu (1 - beta cos theta) at 1 rad,
+  transverse gamma nu), the transverse redshift in the frame of the receiver, the two frames through the
+  aberration, angles 0 and 180 against the results without angle, a wavelength with a negative beta, small
+  beta without cancellation, units, errors.
+  Mutation check: 22 changed lines out of 23 caught; the one not caught is the [-1, 1] limit before acos, not reached in 400,000 random cases and kept as a guard. Full suite 1,600 passed in 383.85 s.
 - Linux tested (Ubuntu 22.04, x86_64, Python 3.12.13, uv 0.11.20): `--self-check` ok in 8.65 s; suite
   1,026 passed and 7 skipped in 44.91 s. macOS is not tested.
 

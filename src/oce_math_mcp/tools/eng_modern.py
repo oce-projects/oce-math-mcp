@@ -716,7 +716,17 @@ _SR = {
         "proper_length",
     },
     "velocity_addition": {"u", "u_beta", "v", "v_beta"},
-    "doppler": {"f", "wavelength", "beta", "v", "z", "f_observed", "wavelength_observed"},
+    "doppler": {
+        "f",
+        "wavelength",
+        "beta",
+        "v",
+        "z",
+        "f_observed",
+        "wavelength_observed",
+        "angle_deg",
+        "angle_frame",
+    },
     "lorentz": {"x", "t", "v", "beta"},
     "mass_energy": {"m", "particle", "energy"},
 }
@@ -759,6 +769,8 @@ def _beta_of(
         "z",
         "f_observed",
         "wavelength_observed",
+        "angle_deg",
+        "angle_frame",
         "x",
         "t",
         "energy",
@@ -797,6 +809,8 @@ _SR_UNITS = {
     "f_observed": "Hz",
     "wavelength_observed": "m",
     "z": "1",
+    "angle_receiver_deg": "deg",
+    "angle_source_deg": "deg",
     "x_prime": "m",
     "t_prime": "s",
     "interval_s2": "m2",
@@ -882,12 +896,84 @@ def _vel_add(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
     return {"beta": b, "v": b * C, "beta_classical": bu + bv}
 
 
+def _cos_deg(deg: float) -> float:
+    """cos of an angle in degrees, exactly 0 at 90 (math.cos(math.radians(90)) = 6.1e-17 moved z of the
+    transverse case at beta = 1e-9 by 1.2e-7 of its value)."""
+    return 0.0 if deg == 90 else math.cos(math.radians(deg))
+
+
+def _acos_deg(c: float) -> float:
+    return math.degrees(math.acos(max(-1.0, min(1.0, c))))
+
+
+def _doppler_angle(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
+    """D119: page "Relativistic Doppler effect", section "Motion in an arbitrary direction". theta = 0 along the
+    line of sight and beta > 0 moving away, as without the angle; the angle is given in the frame of the receiver
+    or of the source, the other one comes from the relativistic aberration."""
+    example = (
+        '{"mode": "doppler", "f": 5e14, "beta": 0.3, "angle_deg": 90, "angle_frame": "receiver"}'
+    )
+    if p.get("angle_deg") is None:
+        raise ToolError(
+            "INVALID_ARGUMENT",
+            "params.angle_frame needs params.angle_deg, the angle in degrees.",
+            example,
+        )
+    frame = choice(p, "angle_frame", ("receiver", "source"))
+    deg = need(p, "angle_deg", None, positive=False)
+    if not 0 <= deg <= 180:
+        raise ToolError(
+            "INVALID_ARGUMENT", "params.angle_deg: an angle between 0 and 180 degrees.", example
+        )
+    beta = _beta_of(p, "v", "beta", signed=True)
+    g = 1 / math.sqrt((1 - beta) * (1 + beta))
+    c = _cos_deg(deg)
+    if frame == "receiver":
+        c_r, c_s = c, (c + beta) / (1 + beta * c)
+    else:  # aberration: cos theta_r = (cos theta_s - beta) / (1 - beta cos theta_s)
+        c_s, c_r = c, (c - beta) / (1 - beta * c)
+    # z = f_s / f_r - 1 = gamma (1 + beta cos theta_r) - 1, with gamma - 1 = beta^2 gamma^2 / (gamma + 1): no
+    # cancellation at small beta (as D78)
+    out: dict[str, Any] = {
+        "beta": beta,
+        "gamma": g,
+        "z": beta * beta * g * g / (g + 1) + g * beta * c_r,
+    }
+    out["angle_receiver_deg"] = deg if frame == "receiver" else _acos_deg(c_r)
+    out["angle_source_deg"] = deg if frame == "source" else _acos_deg(c_s)
+    k = one_of(p, ("f", "wavelength"), "the source (f or wavelength)")
+    # f_s / f_r = gamma (1 + beta cos theta_r), or f_r = gamma (1 - beta cos theta_s) f_s (Einstein 1905)
+    ratio = g * (1 + beta * c_r) if frame == "receiver" else 1 / (g * (1 - beta * c_s))
+    if k == "f":
+        out["f_observed"] = need(p, "f", "frequency") / ratio
+    else:
+        out["wavelength_observed"] = need(p, "wavelength", "length") * ratio
+    out["receding"] = beta * c_r > 0  # radial component v cos theta_r in the frame of the receiver
+    ctx.formula = (
+        "f_r = f_s / (gamma (1 + beta cos theta_r)) = gamma (1 - beta cos theta_s) f_s; "
+        "cos theta_r = (cos theta_s - beta) / (1 - beta cos theta_s)"
+    )
+    ctx.formatted = (
+        f"z = {fmt_sig(out['z'], 7)}, theta_r = {fmt_sig(out['angle_receiver_deg'], 7)} deg, "
+        f"theta_s = {fmt_sig(out['angle_source_deg'], 7)} deg."
+    )
+    return out
+
+
 def _doppler(p: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
+    angle = p.get("angle_deg") is not None or p.get("angle_frame") is not None
     inverse = (
         p.get("z") is not None
         or (p.get("f") is not None and p.get("f_observed") is not None)
         or (p.get("wavelength") is not None and p.get("wavelength_observed") is not None)
     )
+    if inverse and angle:
+        raise ToolError(
+            "INVALID_ARGUMENT",
+            "The angle works with beta or v and the source (f or wavelength), not with z or the observed values.",
+        )
+    if angle:
+        return _doppler_angle(p, ctx)
     if inverse:
         if p.get("beta") is not None or p.get("v") is not None:
             raise ToolError(
