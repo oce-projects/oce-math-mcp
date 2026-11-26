@@ -322,6 +322,23 @@ pages), one group at a time.
   strength example of the page (0.17 M). The D113 entry above said "3 of the 14 gaps": it is 1 gap with 3
   formulas, corrected.
   Mutation check: 50 changed lines out of 50 caught. Full suite 1,550 passed in 287.79 s.
+- `thermo_relations` with N (D117, spec 4.33.0), the first extension of group B. With N in U, H, A or G the
+  relations now include the two Maxwell relations with N of each potential (page "Maxwell relations"),
+  e.g. (dV/dN)_S,p = (dmu/dp)_S,N for H, instead of "mu = (dX/dN)", which compared a derivative with
+  itself; `N` is listed in `variables`. Fixed: an expression without heat capacity (the 3 expressions of
+  the measure of the 475 formulas: C_p = 0, C_V = 0 or (dp/dV)_T = 0) gave `verified` false, or with
+  A = -T V log N - N T stopped with KeyError zoo inside sympy.simplify; since D116 also U = S^2/V + N^2 S
+  became false through the relation of mu_JT. Now a quantity with a division by zero is left out with a
+  warning, a relation with a side that is not finite has `holds` null with a warning, and `verified` needs
+  the checked relations only. The heat capacities, (dp/dV)_T, (dV/dp)_T and the Jacobians are simplified
+  before they divide: with a C_p that is zero only after simplify, 0 / C_p was taken as 0 and mu_JT came out
+  0 instead of undefined. An expression with oo, zoo or nan is refused: SymPy absorbed the finite terms
+  (-N T log V + oo V gave p = 0). 19 tests in `tests/test_thermo_n_d117.py`: the 3 expressions of the
+  measure, a hidden zero in each denominator of A, G, U, H, S and eos (10 cases with
+  (x + 1)^3 - x^3 - 3 x^2 - 3 x = 1, one with atan(T) + atan(1/T)), H of an ideal gas with N (the relation
+  of the page, mu = c T - T S / N), A of an ideal gas with N (Euler, G = N mu), U without N, N in the
+  variables of U, H, A and G only, the infinite expression.
+  Mutation check: 28 changed lines out of 33 caught at the first round; after 4 new tests and 1 equivalent rewrite removed, 7 out of 7. Full suite 1,569 passed in 237.60 s.
 - Linux tested (Ubuntu 22.04, x86_64, Python 3.12.13, uv 0.11.20): `--self-check` ok in 8.65 s; suite
   1,026 passed and 7 skipped in 44.91 s. macOS is not tested.
 

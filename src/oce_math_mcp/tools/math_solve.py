@@ -1559,7 +1559,18 @@ _THERMO_VARS: dict[str, tuple[str, ...]] = {
 }
 _THERMO_RESULTS = {"T", "p", "V", "S", "U", "H", "A", "G", "mu"}
 _THERMO_POSITIVE = {"T", "V", "p", "N"}
-_THERMO_NATURAL = {"A": "T,V", "G": "T,p", "U": "S,V", "H": "S,p"}
+# D117: (natural variable, Maxwell relation with N); the left side is d/dN of d(potential)/d(variable)
+_THERMO_N_RELS = {
+    "U": (("S", "(dT/dN)_S,V = (dmu/dS)_V,N"), ("V", "-(dp/dN)_S,V = (dmu/dV)_S,N")),
+    "H": (("S", "(dT/dN)_S,p = (dmu/dS)_p,N"), ("p", "(dV/dN)_S,p = (dmu/dp)_S,N")),
+    "A": (("T", "-(dS/dN)_T,V = (dmu/dT)_V,N"), ("V", "-(dp/dN)_T,V = (dmu/dV)_T,N")),
+    "G": (("T", "-(dS/dN)_T,p = (dmu/dT)_p,N"), ("p", "(dV/dN)_T,p = (dmu/dp)_T,N")),
+}
+
+
+def _not_finite(e: Any) -> bool:
+    """D117: a quantity or a side of a relation with a division by zero (zoo, nan, oo)."""
+    return bool(e.has(sp.zoo, sp.nan, sp.oo))
 
 
 def _thermo_quantities(
@@ -1573,11 +1584,15 @@ def _thermo_quantities(
         T, V = sy["T"], sy["V"]
         S, p = -D(f, T), -D(f, V)
         U = f + T * S
-        CV = T * D(S, T)
-        kappa = -1 / (V * D(p, V))
+        # D117: denominators simplified before dividing, so that a zero sympy does not see at once gives
+        # zoo and not a finite value (0 / C_p was 0 with C_p = 0 only after simplify)
+        CV = sp.simplify(T * D(S, T))
+        kappa = -1 / (V * sp.simplify(D(p, V)))
         alpha = kappa * D(p, T)
         q = {"S": S, "p": p, "U": U, "H": U + p * V, "G": f + p * V, "C_V": CV}
-        q.update({"C_p": CV + T * V * alpha**2 / kappa, "kappa_T": kappa, "alpha": alpha})
+        q.update(
+            {"C_p": sp.simplify(CV + T * V * alpha**2 / kappa), "kappa_T": kappa, "alpha": alpha}
+        )
         # D116: Joule-Thomson coefficient (dT/dp)_H = V (alpha T - 1) / C_p ("Joule-Thomson effect")
         q["mu_JT"] = V * (T * alpha - 1) / q["C_p"]
         rels = [
@@ -1594,8 +1609,8 @@ def _thermo_quantities(
         T, P = sy["T"], sy["p"]
         S, V = -D(f, T), D(f, P)
         H = f + T * S
-        Cp = T * D(S, T)
-        kappa = -D(V, P) / V
+        Cp = sp.simplify(T * D(S, T))  # D117: simplified before dividing
+        kappa = -sp.simplify(D(V, P)) / V
         alpha = D(V, T) / V
         q = {"S": S, "V": V, "H": H, "U": H - P * V, "A": f - P * V, "C_p": Cp}
         q.update({"C_V": Cp - T * V * alpha**2 / kappa, "kappa_T": kappa, "alpha": alpha})
@@ -1613,13 +1628,13 @@ def _thermo_quantities(
         S, V = sy["S"], sy["V"]
         T, p = D(f, S), -D(f, V)
         q = {"T": T, "p": p, "H": f + p * V, "A": f - T * S, "G": f + p * V - T * S}
-        q["C_V"] = T / D(T, S)
+        q["C_V"] = T / sp.simplify(D(T, S))  # D117: simplified before dividing
         # D116: mu_JT = d(T, H)/d(p, H) with Jacobians in S and V; the relation uses d(T, p)/d(S, V)
         H = q["H"]
-        q["mu_JT"] = (D(T, S) * D(H, V) - D(T, V) * D(H, S)) / (
+        q["mu_JT"] = (D(T, S) * D(H, V) - D(T, V) * D(H, S)) / sp.simplify(
             D(p, S) * D(H, V) - D(p, V) * D(H, S)
         )
-        tp = D(T, S) * D(p, V) - D(T, V) * D(p, S)
+        tp = sp.simplify(D(T, S) * D(p, V) - D(T, V) * D(p, S))
         dv_dt, c_p = -D(p, S) / tp, T * D(p, V) / tp
         rels = [
             ("mu_JT = (T (dV/dT)_p - V) / C_p", q["mu_JT"], (T * dv_dt - V) / c_p),
@@ -1632,11 +1647,12 @@ def _thermo_quantities(
         S, P = sy["S"], sy["p"]
         T, V = D(f, S), D(f, P)
         U = f - P * V
-        q = {"T": T, "V": V, "U": U, "G": f - T * S, "A": U - T * S, "C_p": T / D(T, S)}
+        ts = sp.simplify(D(T, S))  # D117: simplified before dividing
+        q = {"T": T, "V": V, "U": U, "G": f - T * S, "A": U - T * S, "C_p": T / ts}
         # D116: (dT/dp)_H = (dT/dp)_S + (dT/dS)_p (dS/dp)_H with (dS/dp)_H = -V / T
         q["mu_JT"] = D(T, P) - D(T, S) * V / T
         rels = [
-            ("mu_JT = (T (dV/dT)_p - V) / C_p", q["mu_JT"], (T * D(V, S) / D(T, S) - V) / q["C_p"]),
+            ("mu_JT = (T (dV/dT)_p - V) / C_p", q["mu_JT"], (T * D(V, S) / ts - V) / q["C_p"]),
             ("(dT/dp)_S = (dV/dS)_p", D(T, P), D(V, S)),
             ("(dT/dp)_S = d2H/dSdp", D(T, P), D(f, S, P)),
             ("(dT/dS)_p = T/C_p", D(T, S), T / q["C_p"]),
@@ -1646,7 +1662,7 @@ def _thermo_quantities(
         U, V = sy["U"], sy["V"]
         T = 1 / D(f, U)
         p = T * D(f, V)
-        q = {"T": T, "p": p, "C_V": -(D(f, U) ** 2) / D(f, U, 2)}
+        q = {"T": T, "p": p, "C_V": -(D(f, U) ** 2) / sp.simplify(D(f, U, 2))}
         rels = [
             ("(dS/dU)_V,N = 1/T", D(f, U), 1 / T),
             ("(dS/dV)_U,N = p/T", D(f, V), p / T),
@@ -1673,7 +1689,7 @@ def _thermo_quantities(
     else:  # equation of state p(V, T)
         V, T = sy["V"], sy["T"]
         p_t, p_v = D(f, T), D(f, V)
-        kappa = -1 / (V * p_v)
+        kappa = -1 / (V * sp.simplify(p_v))
         alpha = kappa * p_t
         q = {"dp_dT_V": p_t, "dp_dV_T": p_v, "dS_dV_T": p_t, "dU_dV_T": T * p_t - f}
         q.update({"kappa_T": kappa, "alpha": alpha, "Cp_minus_Cv": T * V * alpha**2 / kappa})
@@ -1684,7 +1700,11 @@ def _thermo_quantities(
         return q, rels, [(f, p_t, T), (f, p_v, V)]
     if f.has(N):
         q["mu"] = D(f, N)
-        rels.append((f"mu = (d{pot}/dN)_{_THERMO_NATURAL[pot]}", q["mu"], D(f, N)))
+        # D117: the Maxwell relations with N (page "Maxwell relations", "General Maxwell relationships"),
+        # d/dN of the conjugate of each natural variable = d(mu)/d(that variable); before, the only relation
+        # compared d(potential)/dN with itself
+        for x, name in _THERMO_N_RELS[pot]:
+            rels.append((name, D(D(f, sy[x]), N), D(q["mu"], sy[x])))
         checks.append((f, q["mu"], N))
     return q, rels, checks
 
@@ -1738,6 +1758,10 @@ def _thermo_relations(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
         for n in names
     }
     f = expr_of(_need(args, "expr", "-n*R*T*(log(V/n) + 3/2*log(T))"), grammar(None, extra=sy))
+    if _not_finite(f):  # D117: SymPy absorbs finite terms into oo*V, the quantities had no meaning
+        raise ToolError(
+            "INVALID_ARGUMENT", f"The expression of {pot} must be finite: no oo, zoo or nan."
+        )
     if not any(f.has(sy[n]) for n in _THERMO_VARS[pot][:2]):
         raise ToolError(
             "INVALID_ARGUMENT",
@@ -1753,24 +1777,42 @@ def _thermo_relations(args: dict[str, Any], ctx: Ctx) -> dict[str, Any]:
             f"write {pot} with {', '.join(_THERMO_VARS[pot])} and constants only.",
         )
     q, rels, checks = _thermo_quantities(pot, f, sy)
-    q = {k: sp.simplify(v) for k, v in q.items()}
-    relations = [
-        {
-            "relation": name,
-            "lhs": str(sp.simplify(lhs)),
-            "rhs": str(sp.simplify(rhs)),
-            "holds": is_zero(lhs - rhs),
-        }
-        for name, lhs, rhs in rels
-    ]
+    # D117: a quantity with a division by zero (C_p = 0, (dp/dV)_T = 0) is left out with a warning; simplify
+    # is not called on it (sympy stopped with KeyError zoo on alpha = 0 * zoo)
+    # (the denominators are simplified in _thermo_quantities, so a zero shows up here as zoo or nan)
+    undefined = [k for k, v in q.items() if _not_finite(v)]
+    q = {k: sp.simplify(v) for k, v in q.items() if k not in undefined}
+    if undefined:
+        ctx.warn(f"Not defined for this expression (a division by zero): {', '.join(undefined)}.")
+    relations: list[dict[str, Any]] = []
+    unchecked: list[str] = []
+    for name, lhs, rhs in rels:
+        if _not_finite(lhs) or _not_finite(rhs):
+            relations.append({"relation": name, "lhs": str(lhs), "rhs": str(rhs), "holds": None})
+            unchecked.append(name)
+            continue
+        relations.append(
+            {
+                "relation": name,
+                "lhs": str(sp.simplify(lhs)),
+                "rhs": str(sp.simplify(rhs)),
+                "holds": is_zero(lhs - rhs),
+            }
+        )
+    if unchecked:
+        ctx.warn(f"Relations not checked, a side is not finite: {'; '.join(unchecked)}.")
+    checked = [r["holds"] for r in relations if r["holds"] is not None]
     # independent check: the first derivatives against mpmath finite differences (as D90)
     numeric = all(_check_derivative_numeric(e, d, [(v, 1)]) for e, d, v in checks)
+    variables = list(_THERMO_VARS[pot])
+    if pot in _THERMO_N_RELS and f.has(sy["N"]):
+        variables.append("N")
     out: dict[str, Any] = {
         "potential": pot,
-        "variables": list(_THERMO_VARS[pot]),
+        "variables": variables,
         "quantities": {k: str(v) for k, v in q.items()},
         "relations": relations,
-        "verified": numeric and all(r["holds"] for r in relations),
+        "verified": numeric and bool(checked) and all(checked),
     }
     if args.get("at") is not None:
         out["values"] = _thermo_values(args["at"], q, f, sy, ctx)
