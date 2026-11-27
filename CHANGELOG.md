@@ -2,7 +2,7 @@
 
 Format: one entry per version, newest first. Dates in ISO format (yyyy-mm-dd).
 
-## 0.4.0 - 2026-11-25 (in progress)
+## 0.4.0 - 2026-11-27
 
 New formulas from the coverage measured on 2026-11-25 (233 formulas missing out of 903 in 11 Wikipedia
 pages), one group at a time.
@@ -359,6 +359,10 @@ pages), one group at a time.
   aberration, angles 0 and 180 against the results without angle, a wavelength with a negative beta, small
   beta without cancellation, units, errors.
   Mutation check: 22 changed lines out of 23 caught; the one not caught is the [-1, 1] limit before acos, not reached in 400,000 random cases and kept as a guard. Full suite 1,600 passed in 383.85 s.
+- Linux tested on 3f6cc26 (Ubuntu 22.04.5 LTS, x86_64, Python 3.12.13, uv 0.11.20):
+  `--self-check` ok in 6.23 s; suite 1,591 passed and 9 skipped
+  in 107.44 s (Lean, `pyarrow` and the dataset mirror not installed); `RLIMIT_AS` of a worker
+  1,073,741,824 bytes for memory_mb = 1024, a 12.8 GB array refused.
 - Linux tested (Ubuntu 22.04, x86_64, Python 3.12.13, uv 0.11.20): `--self-check` ok in 8.65 s; suite
   1,026 passed and 7 skipped in 44.91 s. macOS is not tested.
 

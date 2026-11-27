@@ -16,7 +16,7 @@ arithmetic, symbolic algebra, calculus, number theory, numerical methods, answer
 Italian calendar, 3D geometry for CAD/CNC, formal proofs in Lean 4 and 89 engineering, physics
 and chemistry operations.
 
-**Status: version 0.4.0 (in progress).** All 10 tools answer.
+**Status: version 0.4.0.** All 10 tools answer.
 The contract defines 208 operations and all 208 are implemented (for `eng_calc` a test compares
 the contract with the code).
 
@@ -203,8 +203,8 @@ Only `lean_check` needs it. See [Lean 4 and Mathlib](#lean-4-and-mathlib).
 ### Platform
 
 Tested on Windows 10 with Python 3.12.13 and 3.13.13, and on Ubuntu 22.04 (x86_64) with Python
-3.12.13 (version 0.4.0 in progress, 2026-11-25): `--self-check` passes and the test suite gives 1,045
-passed and 7 skipped (Lean, `pyarrow` and the dataset mirror not installed). On Linux the memory
+3.12.13 (version 0.4.0, 2026-11-27): `--self-check` passes and the test suite gives 1,591
+passed and 9 skipped (Lean, `pyarrow` and the dataset mirror not installed). On Linux the memory
 limit of the computing process is `RLIMIT_AS`: `/proc/<pid>/limits` of a worker shows 1,073,741,824
 bytes for `memory_mb = 1024`, and a 12.8 GB array is refused. Not tested: Lean on Linux, and macOS.
 

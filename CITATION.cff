@@ -8,8 +8,8 @@ abstract: >-
   engineering, physics and chemistry operations, behind an AST sandbox.
 authors:
   - name: "oce-projects"
-version: "0.3.0"
-date-released: "2026-11-25"
+version: "0.4.0"
+date-released: "2026-11-27"
 license: Apache-2.0
 repository-code: "https://github.com/oce-projects/oce-math-mcp"
 keywords:
